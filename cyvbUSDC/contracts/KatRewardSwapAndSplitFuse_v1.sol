@@ -49,7 +49,7 @@ contract KatRewardSwapAndSplitFuse_v1 {
     uint256 public constant ADMIN_BPS = 3_000;
 
     /// @dev Official Katana KAT.
-    address public constant KAT = 0x7F1f4b4b29F5058FA32Cc7a97141B8D7e5aBdc2D;
+    address public constant KAT = 0x7F1f4b4b29f5058fA32CC7a97141b8D7e5ABDC2d;
 
     /// @dev Katana USDC / vbUSDC.
     address public constant VB_USDC = 0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36;
