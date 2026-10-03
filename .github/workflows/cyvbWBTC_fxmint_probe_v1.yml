@@ -1,0 +1,70 @@
+name: cyvbWBTC fxMINT probe v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/cyvbWBTC_fxmint_probe_v1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Probe live Katana fxMINT wiring
+        shell: bash
+        run: |
+          set -u
+          RPC=https://katana.drpc.org/
+          FXMINT=0xcb1B53A02D7370A31c6BC3263459e21d2C5C17eC
+          FXUSD=0x1364b238C668A2dec1294174e4798E8c09979f86
+          VBWBTC=0x0913DA6Da4b42f538B445599b46Bb4622342Cf52
+
+          echo "chain_id=$(cast chain-id --rpc-url $RPC)"
+          echo "fxmint_code_bytes=$(( ($(cast code $FXMINT --rpc-url $RPC | wc -c) - 3) / 2 ))"
+
+          probe() {
+            local addr="$1"
+            local sig="$2"
+            shift 2
+            echo
+            echo ">>> $addr :: $sig $*"
+            cast call "$addr" "$sig" "$@" --rpc-url "$RPC" || true
+          }
+
+          echo "=== candidate fxMINT contract ==="
+          probe $FXMINT "fxUSD()(address)"
+          probe $FXMINT "fxBASE()(address)"
+          probe $FXMINT "counterparty()(address)"
+          probe $FXMINT "configuration()(address)"
+          probe $FXMINT "whitelist()(address)"
+          probe $FXMINT "collateralToken()(address)"
+          probe $FXMINT "poolManager()(address)"
+          probe $FXMINT "priceOracle()(address)"
+          probe $FXMINT "getNextPositionId()(uint32)"
+          probe $FXMINT "getDebtRatioRange()(uint256,uint256)"
+          probe $FXMINT "getRebalanceRatios()(uint256,uint256)"
+          probe $FXMINT "getLiquidateRatios()(uint256,uint256)"
+          probe $FXMINT "getTokenScalingFactor(address)(uint256)" $VBWBTC
+          probe $FXMINT "getPoolInfo(address)(uint256,uint256,uint256,uint256,uint256)" $FXMINT
+          probe $FXMINT "getPoolInfo(address)(uint256,uint256,uint256,uint256,uint256)" $VBWBTC
+
+          echo "=== fxUSD contract ==="
+          probe $FXUSD "poolManager()(address)"
+          probe $FXUSD "manager()(address)"
+          probe $FXUSD "name()(string)"
+          probe $FXUSD "symbol()(string)"
+          probe $FXUSD "decimals()(uint8)"
+
+          echo "=== vbWBTC token ==="
+          probe $VBWBTC "name()(string)"
+          probe $VBWBTC "symbol()(string)"
+          probe $VBWBTC "decimals()(uint8)"
