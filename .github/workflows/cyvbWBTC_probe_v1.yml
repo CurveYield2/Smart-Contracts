@@ -1,0 +1,27 @@
+name: cyvbWBTC Katana Probe v1
+
+on:
+  push:
+    paths:
+      - 'cyvbWBTC/scripts/ProbeFxMintKatana_v1.sh'
+      - '.github/workflows/cyvbWBTC_probe_v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Probe live Katana fxMINT stack
+        env:
+          KATANA_RPC_URL: https://katana.drpc.org/
+        run: bash cyvbWBTC/scripts/ProbeFxMintKatana_v1.sh
