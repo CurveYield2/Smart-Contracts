@@ -14,7 +14,7 @@ RPC = os.environ.get("KATANA_RPC_URL", "https://rpc.katana.network/")
 FACTORY = Web3.to_checksum_address("0xc29b8D591d6a3f109Ca7ba384F2e00162866D37B")
 REFERENCE_VAULT = Web3.to_checksum_address("0xEd83daf48429cfb2C650Fd721b9241e180fd4548")
 KAT = Web3.to_checksum_address("0x7f1f4b4b29f5058fa32cc7a97141b8d7e5abdc2d")
-VB_USDC = Web3.to_checksum_address("0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36")
+VB_USDC = Web3.to_checksum_address("0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36")\nREFERENCE_REWARD_ROUTER = Web3.to_checksum_address("0x346f02528aD59D1B57315b6d67FD6a43559a87Bb")
 
 FACTORY_ABI = [
     {
@@ -94,7 +94,7 @@ PRICE_MANAGER_ABI = [
     },
 ]
 
-COMMON_FUSE_ABI = [
+REWARD_ROUTER_ABI = [\n    {\n        "type": "function",\n        "name": "routeFor",\n        "stateMutability": "view",\n        "inputs": [{"name": "tokenIn", "type": "address"}, {"name": "tokenOut", "type": "address"}],\n        "outputs": [{"type": "bytes"}],\n    },\n]\n\nCOMMON_FUSE_ABI = [
     {"type": "function", "name": "MARKET_ID", "stateMutability": "view", "inputs": [], "outputs": [{"type": "uint256"}]},
     {"type": "function", "name": "VERSION", "stateMutability": "view", "inputs": [], "outputs": [{"type": "address"}]},
     {"type": "function", "name": "EXECUTOR", "stateMutability": "view", "inputs": [], "outputs": [{"type": "address"}]},
@@ -182,7 +182,7 @@ def main():
     for fuse in reward_fuses:
         print(json.dumps(inspect_fuse(w3, fuse), sort_keys=True))
 
-    price_manager = w3.eth.contract(address=reference["priceManager"], abi=PRICE_MANAGER_ABI)
+    router = w3.eth.contract(address=REFERENCE_REWARD_ROUTER, abi=REWARD_ROUTER_ABI)\n    print("\\nREFERENCE_REWARD_ROUTER_ROUTES")\n    for token_name, token_out in (("vbUSDC", VB_USDC), ("referenceAsset", reference["asset"])):\n        route = router.functions.routeFor(KAT, token_out).call()\n        print(json.dumps({\n            "router": REFERENCE_REWARD_ROUTER,\n            "tokenIn": KAT,\n            "tokenOutName": token_name,\n            "tokenOut": token_out,\n            "routeBytes": "0x" + route.hex(),\n            "routeLength": len(route),\n        }, sort_keys=True))\n\n    price_manager = w3.eth.contract(address=reference["priceManager"], abi=PRICE_MANAGER_ABI)
     print("\nREFERENCE_PRICE_SOURCES")
     for token_name, token in (("KAT", KAT), ("vbUSDC", VB_USDC), ("referenceAsset", reference["asset"])):
         source = try_call(price_manager, "getSourceOfAssetPrice", token)
