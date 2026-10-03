@@ -1,0 +1,106 @@
+name: cyvbUSDC verify v3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "cyvbUSDC/**"
+      - ".github/workflows/cyvbUSDC_verify_v3.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Install forge-std in GitHub runner
+        run: forge install foundry-rs/forge-std --no-git
+      - name: Create ephemeral Foundry config
+        shell: bash
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          solc = "0.8.30"
+          src = "cyvbUSDC/contracts"
+          script = "cyvbUSDC/script"
+          out = "out"
+          libs = ["lib"]
+          optimizer = true
+          optimizer_runs = 10000000
+          evm_version = "cancun"
+          EOF
+      - name: Compile current cyvbUSDC contracts and scripts
+        run: forge build --sizes
+
+  live-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Verify Katana and IPOR Middle Way package
+        shell: bash
+        run: |
+          RPC="https://rpc.katana.network/"
+          test "$(cast chain-id --rpc-url "$RPC")" = "747474"
+          PACKAGES="$(cast call 0xc29b8D591d6a3f109Ca7ba384F2e00162866D37B "getDaoFeePackages()((uint256,uint256,address)[])" --rpc-url "$RPC")"
+          echo "$PACKAGES"
+          echo "$PACKAGES" | grep -qi "30"
+          echo "$PACKAGES" | grep -qi "200"
+          echo "$PACKAGES" | grep -qi "0xF6a9bd8F6DC537675D499Ac1CA14f2c55d8b5569"
+
+      - name: Verify existing CurveYield router ownership
+        shell: bash
+        run: |
+          RPC="https://rpc.katana.network/"
+          ROUTER=0x01F9894f92ea9224fECc8C35482E20a05De13582
+          SAFE=0x47623C62f281807D615eeb4A2CEee9d97F9D3C49
+          OWNER="$(cast call "$ROUTER" "owner()(address)" --rpc-url "$RPC")"
+          THRESHOLD="$(cast call "$SAFE" "getThreshold()(uint256)" --rpc-url "$RPC")"
+          echo "router owner: $OWNER"
+          echo "Safe threshold: $THRESHOLD"
+          test "$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')" = "$(echo "$SAFE" | tr '[:upper:]' '[:lower:]')"
+          test "$THRESHOLD" = "1"
+
+      - name: Verify direct Sushi V3 KAT-vbUSDC pool
+        shell: bash
+        run: |
+          RPC="https://rpc.katana.network/"
+          FACTORY=0x203e8740894c8955cB8950759876d7E7E45E04c1
+          KAT=0x7F1f4b4b29f5058fA32CC7a97141b8D7e5ABDC2d
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          POOL="$(cast call "$FACTORY" "getPool(address,address,uint24)(address)" "$KAT" "$VBUSDC" 500 --rpc-url "$RPC")"
+          echo "Sushi V3 KAT/vbUSDC 0.05% pool: $POOL"
+          test "$(echo "$POOL" | tr '[:upper:]' '[:lower:]')" != "0x0000000000000000000000000000000000000000"
+
+      - name: Report KAT-vbUSDC router route readiness
+        shell: bash
+        run: |
+          RPC="https://rpc.katana.network/"
+          ROUTER=0x01F9894f92ea9224fECc8C35482E20a05De13582
+          KAT=0x7F1f4b4b29f5058fA32CC7a97141b8D7e5ABDC2d
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          EXPECTED=0x7f1f4b4b29f5058fa32cc7a97141b8d7e5abdc2d0001f4203a662b0bd271a6ed5a60edfbd04bfce608fd36
+          ROUTE="$(cast call "$ROUTER" "routeFor(address,address)(bytes)" "$KAT" "$VBUSDC" --rpc-url "$RPC")"
+          echo "KAT -> vbUSDC route: $ROUTE"
+          if [ "$ROUTE" = "0x" ]; then
+            echo "::notice::Route is not installed yet. Run ConfigureKatVbUsdcRoute_v1.s.sol before DeployCyvbUSDC_v3.s.sol."
+            exit 0
+          fi
+          test "$(echo "$ROUTE" | tr '[:upper:]' '[:lower:]')" = "$EXPECTED"
+          GUARD="$(cast call "$ROUTER" "routeTwapGuard(address,address)(uint32,uint16,bool)" "$KAT" "$VBUSDC" --rpc-url "$RPC")"
+          echo "TWAP guard: $GUARD"
+          echo "$GUARD" | grep -q "900"
+          echo "$GUARD" | grep -q "200"
+          echo "$GUARD" | grep -qi "true"
