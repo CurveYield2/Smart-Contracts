@@ -1,0 +1,27 @@
+name: cyvbWBTC Katana Probe v2
+
+on:
+  push:
+    paths:
+      - 'cyvbWBTC/scripts/ProbeFxMintKatana_v2.sh'
+      - '.github/workflows/cyvbWBTC_probe_v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Discover fxMINT long pools from live PoolManager storage
+        env:
+          KATANA_RPC_URL: https://katana.drpc.org/
+        run: bash cyvbWBTC/scripts/ProbeFxMintKatana_v2.sh
