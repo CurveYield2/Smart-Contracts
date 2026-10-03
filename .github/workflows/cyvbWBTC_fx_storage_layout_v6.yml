@@ -1,0 +1,42 @@
+name: cyvbWBTC fx storage layout v6
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/cyvbWBTC_fx_storage_layout_v6.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  storage-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout Aladdin f(x) with submodules
+        uses: actions/checkout@v4
+        with:
+          repository: AladdinDAO/fx-protocol-contracts
+          ref: main
+          path: fx
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install npm dependencies
+        working-directory: fx
+        run: yarn install --frozen-lockfile
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Inspect PoolManager storage layout
+        working-directory: fx
+        run: forge inspect contracts/core/PoolManager.sol:PoolManager storage-layout
