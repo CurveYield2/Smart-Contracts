@@ -1,0 +1,25 @@
+name: cyvbWBTC Katana Probe v3
+
+on:
+  push:
+    paths:
+      - "cyvbWBTC/scripts/ProbeFxMintKatana_v3.sh"
+      - ".github/workflows/cyvbWBTC_probe_v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Resolve live vbWBTC fxMINT pool
+        run: bash cyvbWBTC/scripts/ProbeFxMintKatana_v3.sh
