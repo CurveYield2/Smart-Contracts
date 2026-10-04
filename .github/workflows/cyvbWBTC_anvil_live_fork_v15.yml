@@ -1,0 +1,243 @@
+name: cyvbWBTC Anvil Live Fork v15
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "cyvbWBTC/contracts/**"
+      - "cyvbWBTC/script/DeployCyvbWBTC_v10.s.sol"
+      - "cyvbWBTC/script/SimulateCyvbWBTC_v7.s.sol"
+      - ".github/workflows/cyvbWBTC_anvil_live_fork_v15.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cyvbwbtc-anvil-live-fork-v15
+  cancel-in-progress: true
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install forge-std on runner
+        run: forge install foundry-rs/forge-std --no-git
+
+      - name: Configure Foundry
+        shell: bash
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          solc = "0.8.30"
+          src = "cyvbWBTC/contracts"
+          script = "cyvbWBTC/script"
+          test = "cyvbWBTC/test"
+          out = "out"
+          libs = ["lib"]
+          optimizer = true
+          optimizer_runs = 10000000
+          evm_version = "cancun"
+          EOF
+
+      - name: Run isolated Katana Anvil live-fork simulation
+        shell: bash
+        run: |
+          set +e
+          mkdir -p cyvbWBTC/test-results
+          RESULT="cyvbWBTC/test-results/CYVBWBTC_ANVIL_RESULT_v15.md"
+          SIM_LOG="$RUNNER_TEMP/cyvbwbtc-anvil-simulation.log"
+          ANVIL_LOG="$RUNNER_TEMP/cyvbwbtc-anvil-node.log"
+          ANVIL_CONFIG="$RUNNER_TEMP/cyvbwbtc-anvil-config.json"
+          SETUP_LOG="$RUNNER_TEMP/cyvbwbtc-anvil-setup.log"
+          : >"$SETUP_LOG"
+          RPC="http://127.0.0.1:8545"
+          LIVE_RPC="https://katana.drpc.org/"
+
+          ROUTER=0x01F9894f92ea9224fECc8C35482E20a05De13582
+          SAFE=0x47623C62f281807D615eeb4A2CEee9d97F9D3C49
+          VBWBTC=0x0913DA6Da4b42f538B445599b46Bb4622342Cf52
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          FXUSD=0x1364b238C668A2dec1294174e4798E8c09979f86
+
+          FXUSD_TO_VBUSDC=0x1364b238c668a2dec1294174e4798e8c09979f86000064203a662b0bd271a6ed5a60edfbd04bfce608fd36
+          VBUSDC_TO_FXUSD=0x203a662b0bd271a6ed5a60edfbd04bfce608fd360000641364b238c668a2dec1294174e4798e8c09979f86
+          VBUSDC_TO_VBWBTC=0x203a662b0bd271a6ed5a60edfbd04bfce608fd360001f40913da6da4b42f538b445599b46bb4622342cf52
+
+          anvil --fork-url "$LIVE_RPC" --chain-id 747474 --host 127.0.0.1 --port 8545 --auto-impersonate --config-out "$ANVIL_CONFIG" >"$ANVIL_LOG" 2>&1 &
+          ANVIL_PID=$!
+
+          for i in $(seq 1 60); do
+            if cast chain-id --rpc-url "$RPC" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
+          SETUP_RC=0
+          CHAIN_ID="$(cast chain-id --rpc-url "$RPC" 2>/dev/null)"
+          BLOCK_NUMBER="$(cast block-number --rpc-url "$RPC" 2>/dev/null)"
+          test "$CHAIN_ID" = "747474" || SETUP_RC=1
+          [ -n "$BLOCK_NUMBER" ] || SETUP_RC=1
+
+          echo "anvil_config_present=$(test -s "$ANVIL_CONFIG" && echo yes || echo no)" >>"$SETUP_LOG"
+          DEPLOYER="$(cast rpc --rpc-url "$RPC" eth_accounts 2>/dev/null | grep -oE '0x[0-9a-fA-F]{40}' | head -n1)"
+          PRIVATE_KEY="$(jq -r '.. | strings | select(test("^0x[0-9a-fA-F]{64}$"))' "$ANVIL_CONFIG" 2>/dev/null | head -n1)"
+          if [ -z "$PRIVATE_KEY" ]; then
+            PRIVATE_KEY="$(grep -oE '0x[0-9a-fA-F]{64}' "$ANVIL_CONFIG" | head -n1)"
+          fi
+          echo "deployer=$DEPLOYER" >>"$SETUP_LOG"
+          echo "private_key_detected=$(test -n "$PRIVATE_KEY" && echo yes || echo no)" >>"$SETUP_LOG"
+          if [ -z "$PRIVATE_KEY" ] || [ -z "$DEPLOYER" ]; then SETUP_RC=1; fi
+
+          cast rpc --rpc-url "$RPC" anvil_setBalance "$SAFE" 0x3635C9ADC5DEA00000 >>"$SETUP_LOG" 2>&1 || SETUP_RC=1
+
+          echo "router_code=$(cast code "$ROUTER" --rpc-url "$RPC" 2>&1)" >>"$SETUP_LOG"
+          echo "router_owner=$(cast call "$ROUTER" "owner()(address)" --rpc-url "$RPC" 2>&1)" >>"$SETUP_LOG"
+          echo "safe_threshold=$(cast call "$SAFE" "getThreshold()(uint256)" --rpc-url "$RPC" 2>&1)" >>"$SETUP_LOG"
+          echo "safe_owners=$(cast call "$SAFE" "getOwners()(address[])" --rpc-url "$RPC" 2>&1)" >>"$SETUP_LOG"
+
+          safe_signature() {
+            python3 -c 'import sys; a=int(sys.argv[1],16); print("0x"+a.to_bytes(32,"big").hex()+"00"*32+"01")' "$1"
+          }
+
+          safe_exec_router() {
+            DATA="$1"
+            OWNER="$(cast call "$SAFE" "getOwners()(address[])" --rpc-url "$RPC" 2>/dev/null | grep -oE '0x[0-9a-fA-F]{40}' | head -n1)"
+            [ -n "$OWNER" ] || return 1
+            cast rpc --rpc-url "$RPC" anvil_setBalance "$OWNER" 0x3635C9ADC5DEA00000 >/dev/null 2>&1 || return 1
+            SIG="$(safe_signature "$OWNER")"
+            cast send "$SAFE" "execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)"               "$ROUTER" 0 "$DATA" 0 0 0 0               0x0000000000000000000000000000000000000000               0x0000000000000000000000000000000000000000               "$SIG" --from "$OWNER" --unlocked --rpc-url "$RPC" >>"$SETUP_LOG" 2>&1
+          }
+
+          router_call() {
+            SIG="$1"
+            shift
+            DATA="$(cast calldata "$SIG" "$@")" || return 1
+            if cast send "$ROUTER" "$SIG" "$@" --from "$SAFE" --unlocked --rpc-url "$RPC" >>"$SETUP_LOG" 2>&1; then
+              return 0
+            fi
+            echo "direct Safe impersonation failed; trying Safe execTransaction" >>"$SETUP_LOG"
+            safe_exec_router "$DATA"
+          }
+
+          configure_route() {
+            TOKEN_IN="$1"
+            TOKEN_OUT="$2"
+            ROUTE_PATH="$3"
+            echo "configure $TOKEN_IN -> $TOKEN_OUT" >>"$SETUP_LOG"
+            router_call "setRoute(address,address,bytes)" "$TOKEN_IN" "$TOKEN_OUT" "$ROUTE_PATH" || return 1
+            router_call "setRouteFeeBps(address,address,uint16)" "$TOKEN_IN" "$TOKEN_OUT" 0 || return 1
+            router_call "setRouteTwapGuard(address,address,uint32,uint16)" "$TOKEN_IN" "$TOKEN_OUT" 900 200 || return 1
+          }
+
+          configure_route "$FXUSD" "$VBUSDC" "$FXUSD_TO_VBUSDC" || SETUP_RC=1
+          configure_route "$VBUSDC" "$FXUSD" "$VBUSDC_TO_FXUSD" || SETUP_RC=1
+          configure_route "$VBUSDC" "$VBWBTC" "$VBUSDC_TO_VBWBTC" || SETUP_RC=1
+
+          ROUTE_A="$(cast call "$ROUTER" "routeFor(address,address)(bytes)" "$FXUSD" "$VBUSDC" --rpc-url "$RPC" 2>/dev/null)"
+          ROUTE_B="$(cast call "$ROUTER" "routeFor(address,address)(bytes)" "$VBUSDC" "$FXUSD" --rpc-url "$RPC" 2>/dev/null)"
+          ROUTE_C="$(cast call "$ROUTER" "routeFor(address,address)(bytes)" "$VBUSDC" "$VBWBTC" --rpc-url "$RPC" 2>/dev/null)"
+          [ -n "$ROUTE_A" ] && [ "$ROUTE_A" != "0x" ] || SETUP_RC=1
+          [ -n "$ROUTE_B" ] && [ "$ROUTE_B" != "0x" ] || SETUP_RC=1
+          [ -n "$ROUTE_C" ] && [ "$ROUTE_C" != "0x" ] || SETUP_RC=1
+
+          # vbWBTC is an 8-decimal WBTC representation on Katana.
+          # Use 0.01 vbWBTC so the fork exercises economically real protocol paths
+          # without needing a large holder balance.
+          SIM_DEPOSIT_AMOUNT=1000000
+
+          HOLDER=0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae
+          SIM_DEPOSIT_AMOUNT=200000
+          HOLDER_BALANCE="$(cast call "$VBWBTC" "balanceOf(address)(uint256)" "$HOLDER" --rpc-url "$RPC" 2>/dev/null | awk '{print $1}')"
+          echo "funding_holder=$HOLDER" >>"$SETUP_LOG"
+          echo "funding_holder_balance=$HOLDER_BALANCE" >>"$SETUP_LOG"
+          if [ -z "$HOLDER_BALANCE" ]; then
+            SETUP_RC=1
+          elif ! python3 -c 'import sys; sys.exit(0 if int(sys.argv[1]) >= int(sys.argv[2]) else 1)' "$HOLDER_BALANCE" "$SIM_DEPOSIT_AMOUNT"; then
+            SETUP_RC=1
+          else
+            cast rpc --rpc-url "$RPC" anvil_setBalance "$HOLDER" 0x3635C9ADC5DEA00000 >>"$SETUP_LOG" 2>&1 || SETUP_RC=1
+            cast send "$VBWBTC" "transfer(address,uint256)" "$DEPLOYER" "$SIM_DEPOSIT_AMOUNT" --from "$HOLDER" --unlocked --rpc-url "$RPC" >>"$SETUP_LOG" 2>&1 || SETUP_RC=1
+          fi
+
+          SIM_RC=1
+          if [ "$SETUP_RC" = "0" ]; then
+            PRIVATE_KEY="$PRIVATE_KEY" SIM_DEPOSIT_AMOUNT="$SIM_DEPOSIT_AMOUNT" forge script cyvbWBTC/script/SimulateCyvbWBTC_v7.s.sol:SimulateCyvbWBTC_v7 --rpc-url "$RPC" --broadcast --slow -vvvv >"$SIM_LOG" 2>&1
+            SIM_RC=$?
+          fi
+
+          {
+            echo "# cyvbWBTC Anvil live-fork result v15"
+            echo
+            echo "- Source commit: $GITHUB_SHA"
+            echo "- Anvil chain ID: 747474"
+            echo "- Fork source: Katana live RPC"
+            echo "- Production state mutated: no"
+            echo "- Setup exit code: $SETUP_RC"
+            echo "- Simulation exit code: $SIM_RC"
+            echo "- Fork block seen by Anvil: $BLOCK_NUMBER"
+            echo "- Anvil deployer: $DEPLOYER"
+            echo "- vbWBTC holder used on fork: $HOLDER"
+            echo "- Simulated gross deposit: $SIM_DEPOSIT_AMOUNT base units"
+            echo
+            echo "## Setup diagnostics"
+            echo "~~~text"
+            echo "chain_id=$CHAIN_ID"
+            echo "fork_block=$BLOCK_NUMBER"
+            echo "deployer=$DEPLOYER"
+            echo "route_fxusd_vbusdc=$ROUTE_A"
+            echo "route_vbusdc_fxusd=$ROUTE_B"
+            echo "route_vbusdc_vbwbtc=$ROUTE_C"
+            echo "holder=$HOLDER"
+            echo "--- setup command log ---"
+            cat "$SETUP_LOG"
+            if [ -n "$HOLDER" ]; then
+              cast call "$VBWBTC" "balanceOf(address)(uint256)" "$HOLDER" --rpc-url "$RPC" 2>&1 || true
+            fi
+            echo "~~~"
+            echo
+            echo "## Simulation output"
+            echo "~~~text"
+            tail -n 240 "$SIM_LOG"
+            echo "~~~"
+            echo
+            echo "## Anvil node tail"
+            echo "~~~text"
+            tail -n 120 "$ANVIL_LOG"
+            echo "~~~"
+          } > "$RESULT"
+
+          echo "SETUP_RC=$SETUP_RC" >> "$GITHUB_ENV"
+          echo "SIM_RC=$SIM_RC" >> "$GITHUB_ENV"
+
+          kill "$ANVIL_PID" >/dev/null 2>&1 || true
+
+      - name: Persist simulation result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "CurveYield2 CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add cyvbWBTC/test-results/CYVBWBTC_ANVIL_RESULT_v15.md
+          if ! git diff --cached --quiet; then
+            git commit -m "test: record cyvbWBTC Anvil result v15 [skip ci]"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Enforce simulation
+        if: always()
+        shell: bash
+        run: |
+          test "$SETUP_RC" = "0"
+          test "$SIM_RC" = "0"
