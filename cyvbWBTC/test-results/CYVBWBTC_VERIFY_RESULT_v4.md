@@ -1,6 +1,6 @@
 # cyvbWBTC verification result v4
 
-- Commit tested: 93202471e1ebbceb4446614be332c9dff460faae
+- Commit tested: b9545a1b8ae70b79420bf57b6a7e8d28d8a5e809
 - Build exit code: 0
 - Focused test exit code: 0
 - Live Katana preflight exit code: 0
@@ -8,6 +8,41 @@
 
 ## Build
 ~~~text
+    │
+502 │         (, uint256 rawDebts) = IFxLongPoolCyvbWBTCV4(FX_POOL).getPosition(position_);
+    │                                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:508:9
+    │
+508 │ ┏         IFxPoolManagerCyvbWBTCV4(POOL_MANAGER).operate(
+509 │ ┃             FX_POOL,
+510 │ ┃             position_,
+511 │ ┃             type(int256).min,
+512 │ ┃             0
+513 │ ┃         );
+    │ ┗━━━━━━━━━┛
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:517:13
+    │
+517 │ ┏             IERC4626FxMintCyvbWBTCV4(CYVBUSDC).redeem(
+518 │ ┃                 nestedShares,
+519 │ ┃                 address(this),
+520 │ ┃                 address(this)
+521 │ ┃             );
+    │ ┗━━━━━━━━━━━━━┛
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:536:9
+    │
+536 │ ┏         IFxPoolManagerCyvbWBTCV4(POOL_MANAGER).operate(
 537 │ ┃             FX_POOL,
 538 │ ┃             position_,
 539 │ ┃             -_toInt(grossAmount_),
@@ -93,41 +128,6 @@ warning[unsafe-typecast]: typecast can truncate values
     │       
     ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
 
-warning[divide-before-multiply]: division before multiplication may lose precision
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcBalanceFuse_v3.sol:102:33
-    │
-102 │                 collateralUsd = (collateralUsd * (FEE_PRECISION - withdrawFee)) / FEE_PRECISION;
-    │                                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    │
-    ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
-
-warning[uninitialized-local]: local variable is read before being initialized
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcBalanceFuse_v3.sol:117:13
-    │
-117 │             grossAssetsUsd += _toWad(
-    │             ━━━━━━━━━━━━━━
-    │
-    ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
-
-warning[unused-return]: return value of an external call is not used
-   ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcBalanceFuse_v3.sol:94:17
-   │
-94 │                 IFxOracleBalanceCyvbWBTCV3(IFxLongPoolBalanceCyvbWBTCV3(FX_POOL).priceOracle()).getPrice();
-   │                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   │
-   ╰ help: https://getfoundry.sh/forge/linting/unused-return
-
-warning[unused-return]: return value of an external call is not used
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcBalanceFuse_v3.sol:98:41
-    │
- 98 │               (, uint256 withdrawFee,,) = IFxPoolConfigurationBalanceCyvbWBTCV3(
-    │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
- 99 │ ┃                 IFxLongPoolBalanceCyvbWBTCV3(FX_POOL).configuration()
-100 │ ┃             ).getPoolFeeRatio(FX_POOL, msg.sender);
-    │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-    │
-    ╰ help: https://getfoundry.sh/forge/linting/unused-return
-
 ~~~
 
 ## Tests
@@ -142,9 +142,9 @@ Ran 7 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v3.t.sol:CyvbWbtcCoreTest_v3
 [PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 420396)
 [PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321019)
 [PASS] test_previewFinalRedeemWaivesExitFee() (gas: 161956)
-Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 2.01ms (2.58ms CPU time)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 2.15ms (2.42ms CPU time)
 
-Ran 1 test suite in 15.74ms (2.01ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
+Ran 1 test suite in 9.42ms (2.15ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
 ~~~
 
 ## Live preflight
