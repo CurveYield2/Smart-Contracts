@@ -1,0 +1,57 @@
+name: IPOR Katana Canonical Fuse Probe v1
+on:
+  push:
+    paths:
+      - '.github/workflows/ipor_katana_canonical_fuse_probe_v1.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Probe canonical IPOR Katana fuse deployments
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "erc4626SupplyLatest1_code=$(cast code 0xb05770874500c7dC981AF26AFb95C7656e2545c5 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626SupplyLatest1_market=$(cast call 0xb05770874500c7dC981AF26AFb95C7656e2545c5 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest1_version=$(cast call 0xb05770874500c7dC981AF26AFb95C7656e2545c5 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance1_code=$(cast code 0x5F8696C110Ccb3686c8B209Fc61dcf40daf88167 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626Balance1_market=$(cast call 0x5F8696C110Ccb3686c8B209Fc61dcf40daf88167 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance1_version=$(cast call 0x5F8696C110Ccb3686c8B209Fc61dcf40daf88167 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest2_code=$(cast code 0x0CE24b8C95B360baABbBBc95090a120c33D56151 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626SupplyLatest2_market=$(cast call 0x0CE24b8C95B360baABbBBc95090a120c33D56151 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest2_version=$(cast call 0x0CE24b8C95B360baABbBBc95090a120c33D56151 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance2_code=$(cast code 0xDF45A0fD4200dE190A45FABCd7F7cD6150b4a0a5 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626Balance2_market=$(cast call 0xDF45A0fD4200dE190A45FABCd7F7cD6150b4a0a5 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance2_version=$(cast call 0xDF45A0fD4200dE190A45FABCd7F7cD6150b4a0a5 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest3_code=$(cast code 0x7ecA2488f171B55238585049fB9eAd8f91038781 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626SupplyLatest3_market=$(cast call 0x7ecA2488f171B55238585049fB9eAd8f91038781 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest3_version=$(cast call 0x7ecA2488f171B55238585049fB9eAd8f91038781 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance3_code=$(cast code 0xBf01D7770829ce4834b308633Cc412E0A12434F5 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626Balance3_market=$(cast call 0xBf01D7770829ce4834b308633Cc412E0A12434F5 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance3_version=$(cast call 0xBf01D7770829ce4834b308633Cc412E0A12434F5 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest4_code=$(cast code 0x03eb6722d7b4fAeB5e5B2507D309542b39be746B --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626SupplyLatest4_market=$(cast call 0x03eb6722d7b4fAeB5e5B2507D309542b39be746B 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest4_version=$(cast call 0x03eb6722d7b4fAeB5e5B2507D309542b39be746B 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance4_code=$(cast code 0xf57dbdFa3064b87BC1D099432a2b39272b4d2Db2 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626Balance4_market=$(cast call 0xf57dbdFa3064b87BC1D099432a2b39272b4d2Db2 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance4_version=$(cast call 0xf57dbdFa3064b87BC1D099432a2b39272b4d2Db2 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest5_code=$(cast code 0xf3891Ccb8801F76106d133401C2fF8b9cD299e65 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626SupplyLatest5_market=$(cast call 0xf3891Ccb8801F76106d133401C2fF8b9cD299e65 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626SupplyLatest5_version=$(cast call 0xf3891Ccb8801F76106d133401C2fF8b9cD299e65 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance5_code=$(cast code 0x1660786a08b9cB0D50Cbb118a5A89A36D2E801d3 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "erc4626Balance5_market=$(cast call 0x1660786a08b9cB0D50Cbb118a5A89A36D2E801d3 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "erc4626Balance5_version=$(cast call 0x1660786a08b9cB0D50Cbb118a5A89A36D2E801d3 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "universalSwapperV2_code=$(cast code 0x2513bA6f5603217636973F130128fc0372084C1E --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "universalSwapperV2_market=$(cast call 0x2513bA6f5603217636973F130128fc0372084C1E 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "universalSwapperV2_version=$(cast call 0x2513bA6f5603217636973F130128fc0372084C1E 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "universalSwapperBalanceV2_code=$(cast code 0x87dF04464459Bfb377aFB130aD3Fd98A0957C0b1 --rpc-url https://katana.drpc.org/ | head -c 20)"
+          echo "universalSwapperBalanceV2_market=$(cast call 0x87dF04464459Bfb377aFB130aD3Fd98A0957C0b1 'MARKET_ID()(uint256)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
+          echo "universalSwapperBalanceV2_version=$(cast call 0x87dF04464459Bfb377aFB130aD3Fd98A0957C0b1 'VERSION()(address)' --rpc-url https://katana.drpc.org/ 2>/dev/null || true)"
