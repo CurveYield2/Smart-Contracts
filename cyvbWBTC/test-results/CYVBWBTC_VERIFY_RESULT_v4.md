@@ -1,6 +1,6 @@
 # cyvbWBTC verification result v4
 
-- Commit tested: 70d074770bc39157838058e2fdcebfb3dde056a3
+- Commit tested: 06c547f3dc75ce7d4b7806359b7b25a12a9687b2
 - Build exit code: 1
 - Focused test exit code: 0
 - Live Katana preflight exit code: 0
@@ -8,8 +8,8 @@
 
 ## Build
 ~~~text
-Compiling 33 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.61s
+Compiling 32 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.51s
 Error: Compiler run failed:
 Error: Compiler error (/solidity/libsolidity/codegen/LValue.cpp:50): Stack too deep. Try compiling with `--via-ir` (cli) or the equivalent `viaIR: true` (standard JSON) while enabling the optimizer. Otherwise, try removing local variables.
    --> cyvbWBTC/script/SimulateCyvbWBTC_v2.s.sol:166:27:
@@ -20,18 +20,9 @@ Error: Compiler error (/solidity/libsolidity/codegen/LValue.cpp:50): Stack too d
 
 ## Tests
 ~~~text
-Compiling 29 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.69s
+Compiling 28 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.32s
 Compiler run successful!
-
-Ran 6 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v2.t.sol:CyvbWbtcCoreTest_v2
-[PASS] test_configBindsVaultAndRecordsOnePosition() (gas: 146899)
-[PASS] test_configDefaultsAndRelativeRanges() (gas: 114850)
-[PASS] test_finalShareExitWaivesFeeAndLeavesNoOrphanAssets() (gas: 307157)
-[PASS] test_gateRejectsDirectVaultUserAndAllowsGateway() (gas: 64401)
-[PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 420373)
-[PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321019)
-Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 1.93ms (1.51ms CPU time)
 
 Ran 7 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v3.t.sol:CyvbWbtcCoreTest_v3
 [PASS] test_configBindsVaultAndRecordsOnePosition() (gas: 146877)
@@ -41,9 +32,9 @@ Ran 7 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v3.t.sol:CyvbWbtcCoreTest_v3
 [PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 420396)
 [PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321019)
 [PASS] test_previewFinalRedeemWaivesExitFee() (gas: 161956)
-Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 1.89ms (1.52ms CPU time)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 1.42ms (1.70ms CPU time)
 
-Ran 2 test suites in 9.57ms (3.83ms CPU time): 13 tests passed, 0 failed, 0 skipped (13 total tests)
+Ran 1 test suite in 9.01ms (1.42ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
 ~~~
 
 ## Live preflight
