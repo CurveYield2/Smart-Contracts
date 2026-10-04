@@ -1,0 +1,69 @@
+name: cyvbWBTC Current Stack Verify v7
+
+on:
+  push:
+    paths:
+      - 'cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v5.sol'
+      - 'cyvbWBTC/test/FxMintCyvbWbtcFuseV5Test_v4.t.sol'
+      - 'cyvbWBTC/script/DeployCyvbWBTC_v9.s.sol'
+      - '.github/workflows/cyvbWBTC_current_stack_verify_v7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: forge install foundry-rs/forge-std --no-git
+      - name: Configure Foundry
+        shell: bash
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          solc = "0.8.30"
+          src = "cyvbWBTC/contracts"
+          test = "cyvbWBTC/test"
+          script = "cyvbWBTC/current-stack-script-placeholder"
+          out = "out"
+          libs = ["lib"]
+          optimizer = true
+          optimizer_runs = 10000000
+          evm_version = "cancun"
+          EOF
+      - name: Build exact v5 deploy stack
+        run: |
+          forge build --sizes \
+            cyvbWBTC/contracts/CyvbWbtcGateway_v3.sol \
+            cyvbWBTC/contracts/CyvbWbtcGatewayGatePreHook_v2.sol \
+            cyvbWBTC/contracts/CyvbWbtcLtvConfig_v3.sol \
+            cyvbWBTC/contracts/FxMintVbWbtcPriceFeed_v1.sol \
+            cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v5.sol \
+            cyvbWBTC/contracts/FxMintCyvbWbtcBalanceFuse_v3.sol \
+            cyvbWBTC/script/DeployCyvbWBTC_v9.s.sol
+      - name: Stage current tests
+        shell: bash
+        run: |
+          find cyvbWBTC/test -maxdepth 1 -type f \
+            ! -name 'CyvbWbtcGatewayV3Test_v2.t.sol' \
+            ! -name 'CyvbWbtcLtvConfigV3Test_v2.t.sol' \
+            ! -name 'FxMintVbWbtcPriceFeedV1Test_v1.t.sol' \
+            ! -name 'FxMintCyvbWbtcBalanceFuseV3Test_v1.t.sol' \
+            ! -name 'FxMintCyvbWbtcFuseV5Test_v4.t.sol' \
+            -delete
+          find cyvbWBTC/contracts -maxdepth 1 -type f \
+            ! -name 'CyvbWbtcGateway_v3.sol' \
+            ! -name 'CyvbWbtcGatewayGatePreHook_v2.sol' \
+            ! -name 'CyvbWbtcLtvConfig_v3.sol' \
+            ! -name 'FxMintVbWbtcPriceFeed_v1.sol' \
+            ! -name 'FxMintCyvbWbtcFuse_v5.sol' \
+            ! -name 'FxMintCyvbWbtcBalanceFuse_v3.sol' \
+            -delete
+      - name: Run current unit tests
+        run: forge test -vvv
