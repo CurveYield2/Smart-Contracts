@@ -1,0 +1,177 @@
+name: cyvbWBTC Verify v5
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "cyvbWBTC/contracts/**"
+      - "cyvbWBTC/script/**"
+      - "cyvbWBTC/test/**"
+      - ".github/workflows/cyvbWBTC_verify_v5.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cyvbwbtc-verify-v5
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install forge-std on runner
+        run: forge install foundry-rs/forge-std --no-git
+
+      - name: Configure Foundry
+        shell: bash
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          solc = "0.8.30"
+          src = "cyvbWBTC/contracts"
+          script = "cyvbWBTC/script"
+          test = "cyvbWBTC/test"
+          out = "out"
+          libs = ["lib"]
+          optimizer = true
+          optimizer_runs = 10000000
+          evm_version = "cancun"
+          EOF
+
+      - name: Compile, test and live-preflight
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          mkdir -p cyvbWBTC/test-results
+          RESULT="cyvbWBTC/test-results/CYVBWBTC_VERIFY_RESULT_v4.md"
+          BUILD_LOG="$RUNNER_TEMP/cyvbwbtc-build.log"
+          TEST_LOG="$RUNNER_TEMP/cyvbwbtc-test.log"
+          PREFLIGHT_LOG="$RUNNER_TEMP/cyvbwbtc-preflight.log"
+
+          forge build --sizes >"$BUILD_LOG" 2>&1
+          BUILD_RC=$?
+
+          forge test -vv >"$TEST_LOG" 2>&1
+          TEST_RC=$?
+
+          RPC="https://rpc.katana.network/"
+          FACTORY=0xc29b8D591d6a3f109Ca7ba384F2e00162866D37B
+          ROUTER=0x01F9894f92ea9224fECc8C35482E20a05De13582
+          SUSHI_FACTORY=0x203e8740894c8955cB8950759876d7E7E45E04c1
+          VBWBTC=0x0913DA6Da4b42f538B445599b46Bb4622342Cf52
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          FXUSD=0x1364b238C668A2dec1294174e4798E8c09979f86
+          POOL_MANAGER=0xFae375C9eA6636c40deB92DD91B7dbbF51BD3C68
+          FX_POOL=0xE32B9b4C8f776687Ec54B4b6B62DbD9ce5fd4b99
+          FXBASE=0x6cf6757725886716Bc3c6A4bB93d02F1d1E3e7Dd
+          FX_ORACLE=0xeDA71e4ab642e97FBAA04beB3a7c4Bd6139a23C5
+
+          PREFLIGHT_RC=0
+          ROUTES_READY=1
+          {
+            CHAIN_ID="$(cast chain-id --rpc-url "$RPC")"
+            echo "chain_id=$CHAIN_ID"
+            test "$CHAIN_ID" = "747474" || PREFLIGHT_RC=1
+
+            PACKAGES="$(cast call "$FACTORY" "getDaoFeePackages()((uint256,uint256,address)[])" --rpc-url "$RPC")"
+            echo "dao_packages=$PACKAGES"
+            echo "$PACKAGES" | grep -q "(30, 200," || PREFLIGHT_RC=1
+
+            COLLATERAL="$(cast call "$FX_POOL" "collateralToken()(address)" --rpc-url "$RPC")"
+            STABLE="$(cast call "$FX_POOL" "fxUSD()(address)" --rpc-url "$RPC")"
+            MANAGER="$(cast call "$FX_POOL" "poolManager()(address)" --rpc-url "$RPC")"
+            ORACLE="$(cast call "$FX_POOL" "priceOracle()(address)" --rpc-url "$RPC")"
+            FXBASE_STABLE="$(cast call "$FXBASE" "stableToken()(address)" --rpc-url "$RPC")"
+            echo "fx_pool_collateral=$COLLATERAL"
+            echo "fx_pool_fxusd=$STABLE"
+            echo "fx_pool_manager=$MANAGER"
+            echo "fx_pool_oracle=$ORACLE"
+            echo "fxbase_stable=$FXBASE_STABLE"
+            test "$(echo "$COLLATERAL" | tr '[:upper:]' '[:lower:]')" = "$(echo "$VBWBTC" | tr '[:upper:]' '[:lower:]')" || PREFLIGHT_RC=1
+            test "$(echo "$STABLE" | tr '[:upper:]' '[:lower:]')" = "$(echo "$FXUSD" | tr '[:upper:]' '[:lower:]')" || PREFLIGHT_RC=1
+            test "$(echo "$MANAGER" | tr '[:upper:]' '[:lower:]')" = "$(echo "$POOL_MANAGER" | tr '[:upper:]' '[:lower:]')" || PREFLIGHT_RC=1
+            test "$(echo "$ORACLE" | tr '[:upper:]' '[:lower:]')" = "$(echo "$FX_ORACLE" | tr '[:upper:]' '[:lower:]')" || PREFLIGHT_RC=1
+            test "$(echo "$FXBASE_STABLE" | tr '[:upper:]' '[:lower:]')" = "$(echo "$VBUSDC" | tr '[:upper:]' '[:lower:]')" || PREFLIGHT_RC=1
+
+            POOL1="$(cast call "$SUSHI_FACTORY" "getPool(address,address,uint24)(address)" "$FXUSD" "$VBUSDC" 100 --rpc-url "$RPC")"
+            POOL2="$(cast call "$SUSHI_FACTORY" "getPool(address,address,uint24)(address)" "$VBUSDC" "$VBWBTC" 500 --rpc-url "$RPC")"
+            echo "fxusd_vbusdc_pool=$POOL1"
+            echo "vbusdc_vbwbtc_pool=$POOL2"
+            test "$(echo "$POOL1" | tr '[:upper:]' '[:lower:]')" = "0xe1578cef06331d77bc99273d5f1af48ec2de92db" || PREFLIGHT_RC=1
+            test "$(echo "$POOL2" | tr '[:upper:]' '[:lower:]')" = "0x744676b3ced942d78f9b8e9cd22246db5c32395c" || PREFLIGHT_RC=1
+
+            for pair in "$FXUSD $VBUSDC" "$VBUSDC $FXUSD" "$VBUSDC $VBWBTC"; do
+              set -- $pair
+              ROUTE="$(cast call "$ROUTER" "routeFor(address,address)(bytes)" "$1" "$2" --rpc-url "$RPC")"
+              echo "route_$1_to_$2=$ROUTE"
+              if [ "$ROUTE" = "0x" ]; then ROUTES_READY=0; fi
+            done
+
+            grep -q "STRATEGY_MARKET_ID = 7" cyvbWBTC/script/DeployCyvbWBTC_v6.s.sol || PREFLIGHT_RC=1
+            grep -q "MARKET_ID = 7" cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol || PREFLIGHT_RC=1
+            grep -q "MARKET_ID = 7" cyvbWBTC/contracts/FxMintCyvbWbtcBalanceFuse_v3.sol || PREFLIGHT_RC=1
+          } >"$PREFLIGHT_LOG" 2>&1
+
+          {
+            echo "# cyvbWBTC verification result v4"
+            echo
+            echo "- Commit tested: $GITHUB_SHA"
+            echo "- Build exit code: $BUILD_RC"
+            echo "- Focused test exit code: $TEST_RC"
+            echo "- Live Katana preflight exit code: $PREFLIGHT_RC"
+            echo "- Production CurveYield routes currently installed: $ROUTES_READY"
+            echo
+            echo "## Build"
+            echo "~~~text"
+            tail -n 120 "$BUILD_LOG"
+            echo "~~~"
+            echo
+            echo "## Tests"
+            echo "~~~text"
+            tail -n 160 "$TEST_LOG"
+            echo "~~~"
+            echo
+            echo "## Live preflight"
+            echo "~~~text"
+            cat "$PREFLIGHT_LOG"
+            echo "~~~"
+          } > "$RESULT"
+
+          echo "BUILD_RC=$BUILD_RC" >> "$GITHUB_ENV"
+          echo "TEST_RC=$TEST_RC" >> "$GITHUB_ENV"
+          echo "PREFLIGHT_RC=$PREFLIGHT_RC" >> "$GITHUB_ENV"
+
+      - name: Persist verification result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "CurveYield2 CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add cyvbWBTC/test-results/CYVBWBTC_VERIFY_RESULT_v4.md
+          if ! git diff --cached --quiet; then
+            git commit -m "test: record cyvbWBTC verification v4 [skip ci]"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Enforce verification
+        if: always()
+        shell: bash
+        run: |
+          test "$BUILD_RC" = "0"
+          test "$TEST_RC" = "0"
+          test "$PREFLIGHT_RC" = "0"
