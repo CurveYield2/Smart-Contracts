@@ -1,0 +1,56 @@
+name: IPOR Katana vbUSDC Reference Probe v1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/ipor_katana_vbusdc_reference_probe_v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Probe live IPOR Katana vbUSDC vault configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          RPC=https://katana.drpc.org/
+          V1=0x4dE1A7B0355434f0F6435F8dc96E8Af0959aBE44
+          V2=0x3e2e0AE37B2d570b9998D33C3e4f197234656d8f
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          FXUSD=0x1364b238C668A2dec1294174e4798E8c09979f86
+          VBWBTC=0x0913DA6Da4b42f538B445599b46Bb4622342Cf52
+
+          for V in "$V1" "$V2"; do
+            echo "===== VAULT $V ====="
+            echo "asset=$(cast call "$V" 'asset()(address)' --rpc-url "$RPC")"
+            echo "oracle=$(cast call "$V" 'getPriceOracleMiddleware()(address)' --rpc-url "$RPC")"
+            echo "fuses=$(cast call "$V" 'getFuses()(address[])' --rpc-url "$RPC")"
+            echo "instant=$(cast call "$V" 'getInstantWithdrawalFuses()(address[])' --rpc-url "$RPC")"
+            for M in 7 1202 100001 100002 100003 100004 100005; do
+              echo "balanceFuse[$M]=$(cast call "$V" 'getBalanceFuse(uint256)(address)' "$M" --rpc-url "$RPC" 2>/dev/null || true)"
+              echo "substrates[$M]=$(cast call "$V" 'getMarketSubstrates(uint256)(bytes32[])' "$M" --rpc-url "$RPC" 2>/dev/null || true)"
+            done
+          done
+
+          ORACLE=$(cast call "$V1" 'getPriceOracleMiddleware()(address)' --rpc-url "$RPC")
+          echo "===== SHARED ORACLE $ORACLE ====="
+          for T in "$VBUSDC" "$FXUSD" "$VBWBTC"; do
+            echo "price[$T]=$(cast call "$ORACLE" 'getAssetPrice(address)(uint256,uint256)' "$T" --rpc-url "$RPC" 2>&1 || true)"
+          done
+
+          FACTORY=0xc29b8D591d6a3f109Ca7ba384F2e00162866D37B
+          echo "factoryOracle=$(cast call "$FACTORY" 'getPriceOracleMiddleware()(address)' --rpc-url "$RPC")"
+
+          for A in             0xb81C00eb71a3D629E6f7Ba66a26218c418D438b8             0xb05770874500c7dC981AF26AFb95C7656e2545c5             0x5F8696C110Ccb3686c8B209Fc61dcf40daf88167             0x2513bA6f5603217636973F130128fc0372084C1E; do
+            echo "canonical[$A].code=$(cast code "$A" --rpc-url "$RPC" | head -c 24)"
+            echo "canonical[$A].market=$(cast call "$A" 'MARKET_ID()(uint256)' --rpc-url "$RPC" 2>/dev/null || true)"
+          done
