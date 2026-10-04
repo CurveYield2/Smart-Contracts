@@ -1,6 +1,6 @@
 # cyvbWBTC verification result v2
 
-- Commit tested: 3c1dd05dc923f84c99c8954ec25d2ca4bdad7075
+- Commit tested: 7a76a5abb14902ab0ba28d15874f8a8a9fbab7a4
 - Build exit code: 1
 - Focused test exit code: 0
 - Live Katana preflight exit code: 0
@@ -8,8 +8,8 @@
 
 ## Build
 ~~~text
-Compiling 35 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.45s
+Compiling 39 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.52s
 Error: Compiler run failed:
 Error: Compiler error (/solidity/libsolidity/codegen/LValue.cpp:50): Stack too deep. Try compiling with `--via-ir` (cli) or the equivalent `viaIR: true` (standard JSON) while enabling the optimizer. Otherwise, try removing local variables.
    --> cyvbWBTC/script/DeployCyvbWBTC_v4.s.sol:275:13:
@@ -20,8 +20,8 @@ Error: Compiler error (/solidity/libsolidity/codegen/LValue.cpp:50): Stack too d
 
 ## Tests
 ~~~text
-Compiling 32 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.62s
+Compiling 34 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.98s
 Compiler run successful with warnings:
 Warning (2018): Function state mutability can be restricted to pure
    --> cyvbWBTC/contracts/CyvbWbtcGateway_v1.sol:164:5:
@@ -30,15 +30,24 @@ Warning (2018): Function state mutability can be restricted to pure
     |     ^ (Relevant source part starts here and spans across multiple lines).
 
 
+Ran 6 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v2.t.sol:CyvbWbtcCoreTest_v2
+[PASS] test_configBindsVaultAndRecordsOnePosition() (gas: 146899)
+[PASS] test_configDefaultsAndRelativeRanges() (gas: 114850)
+[PASS] test_finalShareExitWaivesFeeAndLeavesNoOrphanAssets() (gas: 307157)
+[PASS] test_gateRejectsDirectVaultUserAndAllowsGateway() (gas: 64401)
+[PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 420373)
+[PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321019)
+Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 1.99ms (1.48ms CPU time)
+
 Ran 5 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v1.t.sol:CyvbWbtcCoreTest_v1
 [PASS] test_configBindsVaultAndRecordsOnePosition() (gas: 146899)
 [PASS] test_configDefaultsAndRelativeRanges() (gas: 114850)
 [PASS] test_gateRejectsDirectVaultUserAndAllowsGateway() (gas: 64401)
 [PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 419860)
 [PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321032)
-Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 1.51ms (1.29ms CPU time)
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 2.05ms (1.90ms CPU time)
 
-Ran 1 test suite in 9.02ms (1.51ms CPU time): 5 tests passed, 0 failed, 0 skipped (5 total tests)
+Ran 2 test suites in 9.17ms (4.04ms CPU time): 11 tests passed, 0 failed, 0 skipped (11 total tests)
 ~~~
 
 ## Live preflight
