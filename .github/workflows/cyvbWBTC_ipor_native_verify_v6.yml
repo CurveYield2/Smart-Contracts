@@ -1,0 +1,75 @@
+name: cyvbWBTC IPOR Native Verify v6
+
+on:
+  push:
+    paths:
+      - 'cyvbWBTC/contracts/CyvbWbtcGateway_v3.sol'
+      - 'cyvbWBTC/contracts/CyvbWbtcGatewayGatePreHook_v3.sol'
+      - 'cyvbWBTC/contracts/CyvbWbtcLtvConfig_v3.sol'
+      - 'cyvbWBTC/contracts/FxMintVbWbtcPriceFeed_v2.sol'
+      - 'cyvbWBTC/contracts/FxMintCyvbWbtcPositionFuse_v3.sol'
+      - 'cyvbWBTC/contracts/FxMintCyvbWbtcErc20BalanceFuse_v6.sol'
+      - 'cyvbWBTC/contracts/FxMintCyvbWbtcInstantWithdrawFuse_v4.sol'
+      - 'cyvbWBTC/test/CyvbWbtcGatewayV3Test_v3.t.sol'
+      - 'cyvbWBTC/test/CyvbWbtcLtvConfigV3Test_v2.t.sol'
+      - 'cyvbWBTC/test/FxMintVbWbtcPriceFeedV2Test_v2.t.sol'
+      - 'cyvbWBTC/test/FxMintCyvbWbtcPositionFuseV3Test_v4.t.sol'
+      - 'cyvbWBTC/test/FxMintCyvbWbtcInstantWithdrawFuseV4Test_v3.t.sol'
+      - 'cyvbWBTC/script/DeployCyvbWBTC_v15.s.sol'
+      - '.github/workflows/cyvbWBTC_ipor_native_verify_v6.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: forge install foundry-rs/forge-std --no-git
+      - name: Configure Foundry
+        shell: bash
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          solc = "0.8.30"
+          src = "cyvbWBTC/contracts"
+          test = "cyvbWBTC/test"
+          script = "cyvbWBTC/ipor-native-script-placeholder"
+          out = "out"
+          libs = ["lib"]
+          optimizer = true
+          optimizer_runs = 10000000
+          evm_version = "cancun"
+          EOF
+      - name: Assert official market IDs only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTIVE=(
+            cyvbWBTC/contracts/FxMintCyvbWbtcPositionFuse_v3.sol
+            cyvbWBTC/contracts/FxMintCyvbWbtcErc20BalanceFuse_v6.sol
+            cyvbWBTC/contracts/FxMintCyvbWbtcInstantWithdrawFuse_v4.sol
+            cyvbWBTC/script/DeployCyvbWBTC_v15.s.sol
+          )
+          ! grep -n '7001' "${ACTIVE[@]}"
+          grep -n 'MARKET_ID = 7' cyvbWBTC/contracts/FxMintCyvbWbtcPositionFuse_v3.sol
+          grep -n 'MARKET_ID = 7' cyvbWBTC/contracts/FxMintCyvbWbtcErc20BalanceFuse_v6.sol
+          grep -n 'MARKET_ID = 100001' cyvbWBTC/contracts/FxMintCyvbWbtcInstantWithdrawFuse_v4.sol
+      - name: Build exact official-market deployment stack
+        run: |
+          forge build --sizes             cyvbWBTC/contracts/CyvbWbtcGateway_v3.sol             cyvbWBTC/contracts/CyvbWbtcGatewayGatePreHook_v3.sol             cyvbWBTC/contracts/CyvbWbtcLtvConfig_v3.sol             cyvbWBTC/contracts/FxMintVbWbtcPriceFeed_v2.sol             cyvbWBTC/contracts/FxMintCyvbWbtcPositionFuse_v3.sol             cyvbWBTC/contracts/FxMintCyvbWbtcErc20BalanceFuse_v6.sol             cyvbWBTC/contracts/FxMintCyvbWbtcInstantWithdrawFuse_v4.sol             cyvbWBTC/script/DeployCyvbWBTC_v15.s.sol
+      - name: Stage only active successor tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          find cyvbWBTC/contracts -maxdepth 1 -type f             ! -name 'CyvbWbtcGateway_v3.sol'             ! -name 'CyvbWbtcGatewayGatePreHook_v3.sol'             ! -name 'CyvbWbtcLtvConfig_v3.sol'             ! -name 'FxMintVbWbtcPriceFeed_v2.sol'             ! -name 'FxMintCyvbWbtcPositionFuse_v3.sol'             ! -name 'FxMintCyvbWbtcErc20BalanceFuse_v6.sol'             ! -name 'FxMintCyvbWbtcInstantWithdrawFuse_v4.sol'             -delete
+
+          find cyvbWBTC/test -maxdepth 1 -type f             ! -name 'CyvbWbtcGatewayV3Test_v3.t.sol'             ! -name 'CyvbWbtcLtvConfigV3Test_v2.t.sol'             ! -name 'FxMintVbWbtcPriceFeedV2Test_v2.t.sol'             ! -name 'FxMintCyvbWbtcPositionFuseV3Test_v4.t.sol'             ! -name 'FxMintCyvbWbtcInstantWithdrawFuseV4Test_v3.t.sol'             -delete
+      - name: Run active custom-surface tests
+        run: forge test -vvv
