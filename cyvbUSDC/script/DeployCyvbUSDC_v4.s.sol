@@ -73,6 +73,7 @@ interface IFusionFactoryCyvbUSDCV3 {
 
 interface IAccessManagerCyvbUSDCV3 {
     function grantRole(uint64 roleId_, address account_, uint32 executionDelay_) external;
+    function renounceRole(uint64 roleId_, address callerConfirmation_) external;
     function hasRole(uint64 roleId_, address account_) external view returns (bool isMember, uint32 executionDelay);
 }
 
@@ -113,11 +114,11 @@ interface ICurveYieldSushiV3FeeRouterCyvbUSDCV3 {
     function routeFor(address tokenIn, address tokenOut) external view returns (bytes memory);
 }
 
-/// @title DeployCyvbUSDC_v3
+/// @title DeployCyvbUSDC_v4
 /// @notice Official-IPOR-factory deployment and complete configuration for CurveYield USDC / cyvbUSDC on Katana.
 /// @dev The keeper chooses allocation amounts dynamically across the three whitelisted Morpho markets.
 ///      This script intentionally grants no Morpho borrow/collateral capability.
-contract DeployCyvbUSDC_v3 is Script {
+contract DeployCyvbUSDC_v4 is Script {
     uint256 internal constant KATANA_CHAIN_ID = 747474;
 
     IFusionFactoryCyvbUSDCV3 internal constant FACTORY =
@@ -133,7 +134,9 @@ contract DeployCyvbUSDC_v3 is Script {
     address internal constant MORPHO_LIQUIDITY_SUPPLY_FUSE = 0x1f657229ec2D261be7dCD63ca82abed334d1f28b;
     address internal constant MERKL_CLAIM_FUSE = 0xF4278e62a6B5A45E378e6692C7Aa9C7291E7ce36;
     address internal constant CURVEYIELD_SWAP_ROUTER = 0x01F9894f92ea9224fECc8C35482E20a05De13582;
-    address internal constant CURVEYIELD_FEE_RECEIVER = 0x47623C62f281807D615eeb4A2CEee9d97F9D3C49;
+    address internal constant CURVEYIELD_FEE_RECEIVER = 0x47623C62f281807D615eeb4A2CEee9d97F9D3C49; // cyavKAT fee Safe
+    /// @dev Owner: the same owner as the cyavKAT vault (override with FINAL_OWNER)
+    address internal constant VAULT_OWNER = 0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35;
 
     uint256 internal constant ERC20_VAULT_BALANCE_MARKET = 7;
     uint256 internal constant MORPHO_LIQUIDITY_IN_MARKETS = 41;
@@ -181,7 +184,7 @@ contract DeployCyvbUSDC_v3 is Script {
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(privateKey);
         address keeper = vm.envOr("KEEPER", deployer);
-        address finalOwner = vm.envOr("FINAL_OWNER", deployer);
+        address finalOwner = vm.envOr("FINAL_OWNER", VAULT_OWNER);
 
         require(keeper != address(0), "KEEPER=0");
         require(finalOwner != address(0), "FINAL_OWNER=0");
@@ -207,6 +210,7 @@ contract DeployCyvbUSDC_v3 is Script {
         _configureFees(instance);
         rewardFuse = _configureRewards(instance);
         _makePublic(instance);
+        _handover(instance, deployer, finalOwner);
 
         vm.stopBroadcast();
 
@@ -245,7 +249,19 @@ contract DeployCyvbUSDC_v3 is Script {
 
         if (finalOwner_ != deployer_) {
             access.grantRole(OWNER_ROLE, finalOwner_, 0);
+            access.grantRole(ATOMIST_ROLE, finalOwner_, 0);
         }
+    }
+
+    /// @dev If the deployer is not the owner, it gives up every role it used for setup (owner already granted).
+    function _handover(FusionInstanceCyvbUSDCV3 memory instance_, address deployer_, address finalOwner_) internal {
+        if (finalOwner_ == deployer_) return;
+        IAccessManagerCyvbUSDCV3 access = IAccessManagerCyvbUSDCV3(instance_.accessManager);
+        access.renounceRole(PRICE_ORACLE_MIDDLEWARE_MANAGER_ROLE, deployer_);
+        access.renounceRole(CONFIG_INSTANT_WITHDRAWAL_FUSES_ROLE, deployer_);
+        access.renounceRole(FUSE_MANAGER_ROLE, deployer_);
+        access.renounceRole(ATOMIST_ROLE, deployer_);
+        access.renounceRole(OWNER_ROLE, deployer_);
     }
 
     function _configurePrices(FusionInstanceCyvbUSDCV3 memory instance_) internal {

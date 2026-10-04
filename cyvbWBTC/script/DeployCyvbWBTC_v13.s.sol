@@ -3,12 +3,9 @@ pragma solidity 0.8.30;
 
 import "forge-std/Script.sol";
 
-import "../contracts/CyvbWbtcLtvConfig_v3.sol";
-import "../contracts/CyvbWbtcGateway_v5.sol";
-import "../contracts/CyvbWbtcGatewayGatePreHook_v3.sol";
 import "../contracts/FxMintVbWbtcPriceFeed_v1.sol";
-import "../contracts/FxMintCyvbWbtcFuse_v9.sol";
-import "../contracts/FxMintCyvbWbtcBalanceFuse_v3.sol";
+import "../contracts/FxMintCyvbWbtcFuse_v10.sol";
+import "../contracts/FxMintCyvbWbtcBalanceFuse_v4.sol";
 
 struct FeePackageCyvbWBTCV1 {
     uint256 managementFee;
@@ -61,6 +58,7 @@ interface IFusionFactoryCyvbWBTCV1 {
 
 interface IAccessManagerCyvbWBTCV1 {
     function grantRole(uint64 roleId_, address account_, uint32 executionDelay_) external;
+    function renounceRole(uint64 roleId_, address callerConfirmation_) external;
     function hasRole(uint64 roleId_, address account_) external view returns (bool isMember, uint32 executionDelay);
 }
 
@@ -106,6 +104,7 @@ interface IERC4626InfoCyvbWBTCV1 {
 
 interface IWithdrawManagerInfoCyvbWBTCV2 {
     function getWithdrawFee() external view returns (uint256);
+    function updateWithdrawFee(uint256 fee_) external;
 }
 
 interface IFxLongPoolDeployCyvbWBTCV6 {
@@ -117,24 +116,29 @@ interface ICurveYieldRouterInfoCyvbWBTCV1 {
 }
 
 struct CyvbWbtcComponentsV6 {
-    address ltvConfig;
-    address gateway;
-    address preHook;
     address priceFeed;
     address strategyFuse;
     address balanceFuse;
 }
 
-/// @title DeployCyvbWBTC_v12
+/// @title DeployCyvbWBTC_v13
 /// @notice Deploy and configure CurveYield vbWBTC / cyvbWBTC through the official IPOR Fusion factory on Katana.
-contract DeployCyvbWBTC_v12 is Script {
+/// @dev v13: no gateway / pre-hooks / config contract. Both user fees are IPOR-native: the 0.55% onboarding fee is
+///      FeeManager's deposit fee (shares minted to the withdraw manager, burned for holders by the factory-installed
+///      BurnRequestFeeFuse - keeper job), the 0.35% instant fee is WithdrawManager's withdraw fee (burned on exit).
+///      One custom fuse (FxMintCyvbWbtcFuse_v10, LTV policy folded in) + its balance fuse + the f(x) price feed.
+contract DeployCyvbWBTC_v13 is Script {
     uint256 internal constant KATANA_CHAIN_ID = 747474;
     uint256 internal constant STRATEGY_MARKET_ID = 7; // IporFusionMarkets.ERC20_VAULT_BALANCE
 
     IFusionFactoryCyvbWBTCV1 internal constant FACTORY =
         IFusionFactoryCyvbWBTCV1(0xc29b8D591d6a3f109Ca7ba384F2e00162866D37B);
 
-    address internal constant FEE_RECEIVER = 0x47623C62f281807D615eeb4A2CEee9d97F9D3C49;
+    address internal constant FEE_RECEIVER = 0x47623C62f281807D615eeb4A2CEee9d97F9D3C49; // cyavKAT fee Safe
+    /// @dev Owner: the same owner as the cyavKAT vault (override with FINAL_OWNER)
+    address internal constant VAULT_OWNER = 0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35;
+    uint256 internal constant ONBOARDING_FEE = 0.0055e18; // FeeManager deposit fee, WAD (0.55%)
+    uint256 internal constant INSTANT_WITHDRAW_FEE = 0.0035e18; // WithdrawManager withdraw fee, WAD (0.35%)
 
     address internal constant VBWBTC = 0x0913DA6Da4b42f538B445599b46Bb4622342Cf52;
     address internal constant VBUSDC = 0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36;
@@ -161,28 +165,20 @@ contract DeployCyvbWBTC_v12 is Script {
     uint64 internal constant ATOMIST_ROLE = 100;
     uint64 internal constant ALPHA_ROLE = 200;
     uint64 internal constant FUSE_MANAGER_ROLE = 300;
-    uint64 internal constant PRE_HOOKS_MANAGER_ROLE = 301;
     uint64 internal constant WHITELIST_ROLE = 800;
     uint64 internal constant CONFIG_INSTANT_WITHDRAWAL_FUSES_ROLE = 900;
     uint64 internal constant UPDATE_MARKETS_BALANCES_ROLE = 1000;
     uint64 internal constant PRICE_ORACLE_MIDDLEWARE_MANAGER_ROLE = 1200;
+    uint64 internal constant WITHDRAW_MANAGER_WITHDRAW_FEE_ROLE = 902;
 
-    bytes4 internal constant DEPOSIT_SELECTOR = bytes4(keccak256("deposit(uint256,address)"));
-    bytes4 internal constant MINT_SELECTOR = bytes4(keccak256("mint(uint256,address)"));
-    bytes4 internal constant DEPOSIT_WITH_PERMIT_SELECTOR =
-        bytes4(keccak256("depositWithPermit(uint256,address,uint256,uint8,bytes32,bytes32)"));
-    bytes4 internal constant WITHDRAW_SELECTOR = bytes4(keccak256("withdraw(uint256,address,address)"));
-    bytes4 internal constant REDEEM_SELECTOR = bytes4(keccak256("redeem(uint256,address,address)"));
 
     event CyvbWbtcDeployed(
         address indexed vault,
-        address indexed gateway,
         address indexed strategyFuse,
-        address balanceFuse,
-        address ltvConfig,
+        address indexed balanceFuse,
         address priceFeed,
-        address preHook,
         address keeper,
+        address owner,
         address nestedCyvbUsdc
     );
 
@@ -192,7 +188,7 @@ contract DeployCyvbWBTC_v12 is Script {
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(privateKey);
         address keeper = vm.envOr("KEEPER", deployer);
-        address finalOwner = vm.envOr("FINAL_OWNER", deployer);
+        address finalOwner = vm.envOr("FINAL_OWNER", VAULT_OWNER);
         address nestedCyvbUsdc = vm.envAddress("CURVEYIELD_USDC_VAULT");
 
         require(keeper != address(0) && finalOwner != address(0), "zero role address");
@@ -202,9 +198,6 @@ contract DeployCyvbWBTC_v12 is Script {
 
         vm.startBroadcast(privateKey);
 
-        // The vault is converted to public ERC-4626 access, then a mandatory pre-hook
-        // gates deposit/mint/depositWithPermit/withdraw/redeem to CyvbWbtcGateway_v5.
-        // This allows arbitrary receivers while making both user fee paths non-bypassable.
         instance = FACTORY.clone(
             "CurveYield vbWBTC",
             "cyvbWBTC",
@@ -215,53 +208,43 @@ contract DeployCyvbWBTC_v12 is Script {
         );
 
         CyvbWbtcComponentsV6 memory components =
-            _deployComponents(instance.plasmaVault, nestedCyvbUsdc, deployer);
+            _deployComponents(instance.plasmaVault, nestedCyvbUsdc);
 
         _configureRoles(instance, deployer, keeper, finalOwner);
         _configurePrice(instance, components.priceFeed);
         _configureStrategy(instance, components.strategyFuse, components.balanceFuse);
-        _configureGatewayGate(instance, components.preHook);
         _configureFees(instance);
 
         IPlasmaVaultGovernanceCyvbWBTCV1(instance.plasmaVault).convertToPublicVault();
         IPlasmaVaultGovernanceCyvbWBTCV1(instance.plasmaVault).enableTransferShares();
 
-        if (finalOwner != deployer) {
-            CyvbWbtcLtvConfig_v3(components.ltvConfig).transferOwnership(finalOwner);
-        }
+        _handover(instance, deployer, finalOwner);
 
         vm.stopBroadcast();
 
-        _verifyDeployment(instance, nestedCyvbUsdc, keeper, components);
+        _verifyDeployment(instance, nestedCyvbUsdc, keeper, finalOwner, components);
 
         emit CyvbWbtcDeployed(
             instance.plasmaVault,
-            components.gateway,
             components.strategyFuse,
             components.balanceFuse,
-            components.ltvConfig,
             components.priceFeed,
-            components.preHook,
             keeper,
+            finalOwner,
             nestedCyvbUsdc
         );
     }
 
     function _deployComponents(
         address vault_,
-        address nestedCyvbUsdc_,
-        address deployer_
+        address nestedCyvbUsdc_
     ) private returns (CyvbWbtcComponentsV6 memory components) {
-        CyvbWbtcLtvConfig_v3 ltvConfig = new CyvbWbtcLtvConfig_v3(deployer_);
-        ltvConfig.bindVault(vault_);
-        components.ltvConfig = address(ltvConfig);
-
-        components.gateway = address(new CyvbWbtcGateway_v5(vault_, VBWBTC));
-        components.preHook = address(new CyvbWbtcGatewayGatePreHook_v3(vault_, components.gateway));
         components.priceFeed = address(new FxMintVbWbtcPriceFeed_v1(FX_PRICE_ORACLE));
-
-        components.strategyFuse = address(new FxMintCyvbWbtcFuse_v9(
-            components.ltvConfig,
+        // default policy: target 50%, high 60% -> 58%, low 45% -> 50% (validated in the fuse constructor)
+        components.strategyFuse = address(new FxMintCyvbWbtcFuse_v10(
+            STRATEGY_MARKET_ID,
+            vault_,
+            CyvbWbtcLtvPolicy({targetLtvBps: 5_000, highTriggerBps: 6_000, highResetBps: 5_800, lowTriggerBps: 4_500, lowResetBps: 5_000}),
             FX_POOL_MANAGER,
             FX_POOL,
             FXBASE,
@@ -271,9 +254,8 @@ contract DeployCyvbWBTC_v12 is Script {
             nestedCyvbUsdc_,
             CURVEYIELD_ROUTER
         ));
-
-        components.balanceFuse = address(new FxMintCyvbWbtcBalanceFuse_v3(
-            components.ltvConfig,
+        components.balanceFuse = address(new FxMintCyvbWbtcBalanceFuse_v4(
+            STRATEGY_MARKET_ID,
             FX_POOL,
             FXUSD,
             VBUSDC,
@@ -291,15 +273,16 @@ contract DeployCyvbWBTC_v12 is Script {
 
         access.grantRole(ATOMIST_ROLE, deployer_, 0);
         access.grantRole(FUSE_MANAGER_ROLE, deployer_, 0);
-        access.grantRole(PRE_HOOKS_MANAGER_ROLE, deployer_, 0);
         access.grantRole(CONFIG_INSTANT_WITHDRAWAL_FUSES_ROLE, deployer_, 0);
         access.grantRole(PRICE_ORACLE_MIDDLEWARE_MANAGER_ROLE, deployer_, 0);
+        access.grantRole(WITHDRAW_MANAGER_WITHDRAW_FEE_ROLE, deployer_, 0);
 
         access.grantRole(ALPHA_ROLE, keeper_, 0);
         access.grantRole(UPDATE_MARKETS_BALANCES_ROLE, keeper_, 0);
 
         if (finalOwner_ != deployer_) {
             access.grantRole(OWNER_ROLE, finalOwner_, 0);
+            access.grantRole(ATOMIST_ROLE, finalOwner_, 0);
         }
     }
 
@@ -332,29 +315,6 @@ contract DeployCyvbWBTC_v12 is Script {
         vault.configureInstantWithdrawalFuses(instant);
     }
 
-    function _configureGatewayGate(FusionInstanceCyvbWBTCV1 memory instance_, address preHook_) private {
-        bytes4[] memory selectors = new bytes4[](5);
-        address[] memory implementations = new address[](5);
-        bytes32[][] memory substrates = new bytes32[][](5);
-
-        selectors[0] = DEPOSIT_SELECTOR;
-        selectors[1] = MINT_SELECTOR;
-        selectors[2] = DEPOSIT_WITH_PERMIT_SELECTOR;
-        selectors[3] = WITHDRAW_SELECTOR;
-        selectors[4] = REDEEM_SELECTOR;
-
-        for (uint256 i; i < 5; ++i) {
-            implementations[i] = preHook_;
-            substrates[i] = new bytes32[](0);
-        }
-
-        IPlasmaVaultGovernanceCyvbWBTCV1(instance_.plasmaVault).setPreHookImplementations(
-            selectors,
-            implementations,
-            substrates
-        );
-    }
-
     function _configureFees(FusionInstanceCyvbWBTCV1 memory instance_) private {
         IFeeManagerCyvbWBTCV1 fees = IFeeManagerCyvbWBTCV1(instance_.feeManager);
 
@@ -372,9 +332,22 @@ contract DeployCyvbWBTC_v12 is Script {
         });
         fees.updatePerformanceFee(performance);
 
-        // The gateway retains onboarding/instant-exit fees inside the vault for PPS accretion,
-        // so IPOR's native deposit-fee share minting is intentionally disabled.
-        fees.setDepositFee(0);
+        // IPOR-native user fees, both PPS-accretive: the deposit fee's shares go to the withdraw manager and are burned
+        // by the keeper via the factory-installed BurnRequestFeeFuse; the instant withdraw fee shares burn on exit.
+        fees.setDepositFee(ONBOARDING_FEE);
+        IWithdrawManagerInfoCyvbWBTCV2(instance_.withdrawManager).updateWithdrawFee(INSTANT_WITHDRAW_FEE);
+    }
+
+    /// @dev If the deployer is not the owner, it gives up every role it used for setup (owner already granted).
+    function _handover(FusionInstanceCyvbWBTCV1 memory instance_, address deployer_, address finalOwner_) private {
+        if (finalOwner_ == deployer_) return;
+        IAccessManagerCyvbWBTCV1 access = IAccessManagerCyvbWBTCV1(instance_.accessManager);
+        access.renounceRole(WITHDRAW_MANAGER_WITHDRAW_FEE_ROLE, deployer_);
+        access.renounceRole(PRICE_ORACLE_MIDDLEWARE_MANAGER_ROLE, deployer_);
+        access.renounceRole(CONFIG_INSTANT_WITHDRAWAL_FUSES_ROLE, deployer_);
+        access.renounceRole(FUSE_MANAGER_ROLE, deployer_);
+        access.renounceRole(ATOMIST_ROLE, deployer_);
+        access.renounceRole(OWNER_ROLE, deployer_);
     }
 
     function _verifyExternalDependencies(address nested_) private view {
@@ -416,6 +389,7 @@ contract DeployCyvbWBTC_v12 is Script {
         FusionInstanceCyvbWBTCV1 memory instance_,
         address nested_,
         address keeper_,
+        address finalOwner_,
         CyvbWbtcComponentsV6 memory components_
     ) private view {
         require(instance_.underlyingToken == VBWBTC, "underlying mismatch");
@@ -425,6 +399,8 @@ contract DeployCyvbWBTC_v12 is Script {
         IAccessManagerCyvbWBTCV1 access = IAccessManagerCyvbWBTCV1(instance_.accessManager);
         (bool alpha,) = access.hasRole(ALPHA_ROLE, keeper_);
         require(alpha, "keeper lacks ALPHA");
+        (bool isOwner,) = access.hasRole(OWNER_ROLE, finalOwner_);
+        require(isOwner, "final owner lacks OWNER");
 
         IPlasmaVaultGovernanceCyvbWBTCV1 vault =
             IPlasmaVaultGovernanceCyvbWBTCV1(instance_.plasmaVault);
@@ -447,10 +423,10 @@ contract DeployCyvbWBTC_v12 is Script {
         IFeeManagerCyvbWBTCV1 fees = IFeeManagerCyvbWBTCV1(instance_.feeManager);
         require(fees.getTotalManagementFee() == EXPECTED_TOTAL_MANAGEMENT_BPS, "management total mismatch");
         require(fees.getTotalPerformanceFee() == EXPECTED_TOTAL_PERFORMANCE_BPS, "performance total mismatch");
-        require(fees.getDepositFee() == 0, "native deposit fee must be zero");
+        require(fees.getDepositFee() == ONBOARDING_FEE, "onboarding fee mismatch");
         require(
-            IWithdrawManagerInfoCyvbWBTCV2(instance_.withdrawManager).getWithdrawFee() == 0,
-            "native withdraw fee must be zero"
+            IWithdrawManagerInfoCyvbWBTCV2(instance_.withdrawManager).getWithdrawFee() == INSTANT_WITHDRAW_FEE,
+            "instant withdraw fee mismatch"
         );
 
         RecipientFeeCyvbWBTCV1[] memory management = fees.getManagementFeeRecipients();
@@ -468,26 +444,17 @@ contract DeployCyvbWBTC_v12 is Script {
             "performance receiver mismatch"
         );
 
-        require(CyvbWbtcGateway_v5(components_.gateway).VAULT() == instance_.plasmaVault, "gateway vault mismatch");
-        require(CyvbWbtcGateway_v5(components_.gateway).ASSET() == VBWBTC, "gateway asset mismatch");
-        require(CyvbWbtcGateway_v5(components_.gateway).ONBOARDING_FEE_BPS() == 55, "onboarding fee mismatch");
-        require(CyvbWbtcGateway_v5(components_.gateway).INSTANT_EXIT_FEE_BPS() == 35, "exit fee mismatch");
-
-        require(CyvbWbtcLtvConfig_v3(components_.ltvConfig).vault() == instance_.plasmaVault, "config vault mismatch");
-        CyvbWbtcLtvConfig_v3.LtvPolicy memory policy = CyvbWbtcLtvConfig_v3(components_.ltvConfig).getLtvPolicy();
+        FxMintCyvbWbtcFuse_v10 fuse = FxMintCyvbWbtcFuse_v10(components_.strategyFuse);
+        require(fuse.VAULT() == instance_.plasmaVault, "fuse vault mismatch");
+        CyvbWbtcLtvPolicy memory policy = fuse.getLtvPolicy();
         require(policy.targetLtvBps == 5000, "target LTV mismatch");
         require(policy.highTriggerBps == 6000, "high trigger mismatch");
         require(policy.highResetBps == 5800, "high reset mismatch");
         require(policy.lowTriggerBps == 4500, "low trigger mismatch");
         require(policy.lowResetBps == 5000, "low reset mismatch");
 
-        require(
-            CyvbWbtcGatewayGatePreHook_v3(components_.preHook).GATEWAY() == components_.gateway,
-            "prehook gateway mismatch"
-        );
-
-        require(FxMintCyvbWbtcFuse_v9(components_.strategyFuse).CYVBUSDC() == nested_, "nested vault fuse mismatch");
-        require(FxMintCyvbWbtcBalanceFuse_v3(components_.balanceFuse).CYVBUSDC() == nested_, "nested balance mismatch");
+        require(FxMintCyvbWbtcFuse_v10(components_.strategyFuse).CYVBUSDC() == nested_, "nested vault fuse mismatch");
+        require(FxMintCyvbWbtcBalanceFuse_v4(components_.balanceFuse).CYVBUSDC() == nested_, "nested balance mismatch");
 
         _verifyRoutes();
     }

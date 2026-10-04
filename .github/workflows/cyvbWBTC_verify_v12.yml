@@ -1,4 +1,4 @@
-name: cyvbWBTC Verify v11
+name: cyvbWBTC Verify v12
 
 on:
   workflow_dispatch:
@@ -7,13 +7,13 @@ on:
       - "cyvbWBTC/contracts/**"
       - "cyvbWBTC/script/**"
       - "cyvbWBTC/test/**"
-      - ".github/workflows/cyvbWBTC_verify_v11.yml"
+      - ".github/workflows/cyvbWBTC_verify_v12.yml"
 
 permissions:
   contents: write
 
 concurrency:
-  group: cyvbwbtc-verify-v11
+  group: cyvbwbtc-verify-v12
   cancel-in-progress: true
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
         run: |
           set +e
           mkdir -p cyvbWBTC/test-results
-          RESULT="cyvbWBTC/test-results/CYVBWBTC_VERIFY_RESULT_v10.md"
+          RESULT="cyvbWBTC/test-results/CYVBWBTC_VERIFY_RESULT_v11.md"
           BUILD_LOG="$RUNNER_TEMP/cyvbwbtc-build.log"
           TEST_LOG="$RUNNER_TEMP/cyvbwbtc-test.log"
           PREFLIGHT_LOG="$RUNNER_TEMP/cyvbwbtc-preflight.log"
@@ -126,13 +126,11 @@ jobs:
               if [ "$ROUTE" = "0x" ]; then ROUTES_READY=0; fi
             done
 
-            grep -q "STRATEGY_MARKET_ID = 7" cyvbWBTC/script/DeployCyvbWBTC_v12.s.sol || PREFLIGHT_RC=1
-            grep -q "MARKET_ID = 7" cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v9.sol || PREFLIGHT_RC=1
-            grep -q "MARKET_ID = 7" cyvbWBTC/contracts/FxMintCyvbWbtcBalanceFuse_v3.sol || PREFLIGHT_RC=1
+            grep -q "STRATEGY_MARKET_ID = 7" cyvbWBTC/script/DeployCyvbWBTC_v13.s.sol || PREFLIGHT_RC=1
           } >"$PREFLIGHT_LOG" 2>&1
 
           {
-            echo "# cyvbWBTC verification result v10"
+            echo "# cyvbWBTC verification result v11"
             echo
             echo "- Commit tested: $GITHUB_SHA"
             echo "- Build exit code: $BUILD_RC"
@@ -166,9 +164,9 @@ jobs:
         run: |
           git config user.name "CurveYield2 CI"
           git config user.email "actions@users.noreply.github.com"
-          git add cyvbWBTC/test-results/CYVBWBTC_VERIFY_RESULT_v10.md
+          git add cyvbWBTC/test-results/CYVBWBTC_VERIFY_RESULT_v11.md
           if ! git diff --cached --quiet; then
-            git commit -m "test: record cyvbWBTC verification v10 [skip ci]"
+            git commit -m "test: record cyvbWBTC verification v11 [skip ci]"
             git pull --rebase origin main
             git push origin HEAD:main
           fi

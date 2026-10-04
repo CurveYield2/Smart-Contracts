@@ -16,20 +16,28 @@ interface IERC4626FxMintCyvbWBTCV9 {
     function maxWithdraw(address owner) external view returns (uint256);
 }
 
-interface ICyvbWbtcLtvConfigFuseV9 {
-    struct LtvPolicy {
-        uint16 targetLtvBps;
-        uint16 highTriggerBps;
-        uint16 highResetBps;
-        uint16 lowTriggerBps;
-        uint16 lowResetBps;
+/// @dev The f(x) position id lives in IPOR's official fxMINT storage slot (FxMintStorageLib), in the vault.
+library CyvbWbtcFxPositionStorage {
+    bytes32 internal constant FX_MINT_POSITION_IDS = 0xd6497e578ce2e2ee4effa1fadef2326ebdc8f2b065aece8657da626f367fe500;
+
+    struct FxMintPositionIds {
+        mapping(address pool => uint256 positionId) positionIds;
     }
 
-    function vault() external view returns (address);
-    function positionId() external view returns (uint256);
-    function getLtvPolicy() external view returns (LtvPolicy memory);
-    function recordPositionId(uint256 positionId_) external;
-    function INSTANT_WITHDRAW_MAX_LTV_BPS() external view returns (uint16);
+    function ids() internal pure returns (FxMintPositionIds storage s_) {
+        bytes32 slot = FX_MINT_POSITION_IDS;
+        assembly {
+            s_.slot := slot
+        }
+    }
+}
+
+struct CyvbWbtcLtvPolicy {
+    uint16 targetLtvBps;
+    uint16 highTriggerBps;
+    uint16 highResetBps;
+    uint16 lowTriggerBps;
+    uint16 lowResetBps;
 }
 
 interface IFxPoolManagerCyvbWBTCV9 {
@@ -88,7 +96,7 @@ interface ICurveYieldRouterCyvbWBTCV9 {
     ) external returns (uint256 netAmountOut);
 }
 
-/// @title FxMintCyvbWbtcFuse_v9
+/// @title FxMintCyvbWbtcFuse_v10
 /// @notice cyvbWBTC strategy fuse:
 ///         vbWBTC -> f(x) collateral -> fxUSD debt -> vbUSDC -> nested cyvbUSDC.
 /// @dev Runs by delegatecall from IPOR PlasmaVault. Position ownership, token balances and approvals
@@ -99,15 +107,36 @@ interface ICurveYieldRouterCyvbWBTCV9 {
 ///      - >= high trigger (default 60%) deleverages to high reset (default 58%),
 ///      - <= low trigger (default 45%) borrows to low reset (default 50%),
 ///      - instant withdrawals never leave the f(x) position above 55%.
-contract FxMintCyvbWbtcFuse_v9 {
-    uint256 public constant MARKET_ID = 7; // IporFusionMarkets.ERC20_VAULT_BALANCE
+contract FxMintCyvbWbtcFuse_v10 {
+    /// @notice Vault-local fxMINT market (balance: FxMintCyvbWbtcBalanceFuse_v4); depends on 100_001 (cyvbUSDC) and 7.
+    uint256 public immutable MARKET_ID;
+    /// @notice Instant withdrawals never leave the f(x) position above this LTV.
+    uint16 public constant INSTANT_WITHDRAW_MAX_LTV_BPS = 5_500;
+    // LTV policy bounds: +/-10% relative to each baseline (folded from CyvbWbtcLtvConfig_v3)
+    uint16 public constant MIN_TARGET_LTV_BPS = 4_500;
+    uint16 public constant MAX_TARGET_LTV_BPS = 5_500;
+    uint16 public constant MIN_HIGH_TRIGGER_BPS = 5_400;
+    uint16 public constant MAX_HIGH_TRIGGER_BPS = 6_600;
+    uint16 public constant MIN_HIGH_RESET_BPS = 5_220;
+    uint16 public constant MAX_HIGH_RESET_BPS = 6_380;
+    uint16 public constant MIN_LOW_TRIGGER_BPS = 4_050;
+    uint16 public constant MAX_LOW_TRIGGER_BPS = 4_950;
+    uint16 public constant MIN_LOW_RESET_BPS = 4_500;
+    uint16 public constant MAX_LOW_RESET_BPS = 5_500;
     uint256 public constant WAD = 1e18;
     uint256 public constant BPS = 10_000;
     uint256 public constant FEE_PRECISION = 1e9;
     uint256 public constant DELEVERAGE_STABLE_BUFFER_BPS = 100; // 1% input buffer; surplus is recycled.
 
     address public immutable VERSION;
-    address public immutable CONFIG;
+    /// @notice The cyvbWBTC PlasmaVault this fuse runs in (delegatecall context check).
+    address public immutable VAULT;
+    // LTV policy (immutable: a policy change = a new fuse version installed by the fuse manager)
+    uint16 public immutable TARGET_LTV_BPS;
+    uint16 public immutable HIGH_TRIGGER_BPS;
+    uint16 public immutable HIGH_RESET_BPS;
+    uint16 public immutable LOW_TRIGGER_BPS;
+    uint16 public immutable LOW_RESET_BPS;
     address public immutable POOL_MANAGER;
     address public immutable FX_POOL;
     address public immutable FXBASE;
@@ -118,6 +147,8 @@ contract FxMintCyvbWbtcFuse_v9 {
     address public immutable ROUTER;
 
     error InvalidAddress();
+    error ValueOutOfRange();
+    error InvalidOrdering();
     error WrongVaultContext();
     error ProtocolTopologyMismatch();
     error InvalidDeadline();
@@ -161,7 +192,9 @@ contract FxMintCyvbWbtcFuse_v9 {
     );
 
     constructor(
-        address config_,
+        uint256 marketId_,
+        address vault_,
+        CyvbWbtcLtvPolicy memory policy_,
         address poolManager_,
         address fxPool_,
         address fxBase_,
@@ -172,7 +205,7 @@ contract FxMintCyvbWbtcFuse_v9 {
         address router_
     ) {
         if (
-            config_ == address(0) ||
+            vault_ == address(0) ||
             poolManager_ == address(0) ||
             fxPool_ == address(0) ||
             fxBase_ == address(0) ||
@@ -184,7 +217,7 @@ contract FxMintCyvbWbtcFuse_v9 {
         ) revert InvalidAddress();
 
         if (
-            config_.code.length == 0 ||
+            vault_.code.length == 0 ||
             poolManager_.code.length == 0 ||
             fxPool_.code.length == 0 ||
             fxBase_.code.length == 0 ||
@@ -204,7 +237,14 @@ contract FxMintCyvbWbtcFuse_v9 {
         ) revert ProtocolTopologyMismatch();
 
         VERSION = address(this);
-        CONFIG = config_;
+        VAULT = vault_;
+        MARKET_ID = marketId_;
+        _validatePolicy(policy_);
+        TARGET_LTV_BPS = policy_.targetLtvBps;
+        HIGH_TRIGGER_BPS = policy_.highTriggerBps;
+        HIGH_RESET_BPS = policy_.highResetBps;
+        LOW_TRIGGER_BPS = policy_.lowTriggerBps;
+        LOW_RESET_BPS = policy_.lowResetBps;
         POOL_MANAGER = poolManager_;
         FX_POOL = fxPool_;
         FXBASE = fxBase_;
@@ -230,8 +270,7 @@ contract FxMintCyvbWbtcFuse_v9 {
 
         uint256 fxUsdBefore = IERC20FxMintCyvbWBTCV9(FXUSD).balanceOf(address(this));
 
-        ICyvbWbtcLtvConfigFuseV9.LtvPolicy memory policy =
-            ICyvbWbtcLtvConfigFuseV9(CONFIG).getLtvPolicy();
+        CyvbWbtcLtvPolicy memory policy = getLtvPolicy();
 
         // f(x) enforces its debt-ratio range at the end of every operate() call.
         // A fresh position therefore cannot be created collateral-only and borrowed
@@ -267,12 +306,11 @@ contract FxMintCyvbWbtcFuse_v9 {
         _requireVaultContext();
         _checkDeadline(deadline_);
 
-        uint256 position = ICyvbWbtcLtvConfigFuseV9(CONFIG).positionId();
+        uint256 position = _positionId();
         if (position == 0) revert NoPosition();
 
         uint256 oldLtv = IFxLongPoolCyvbWBTCV9(FX_POOL).getPositionDebtRatio(position);
-        ICyvbWbtcLtvConfigFuseV9.LtvPolicy memory policy =
-            ICyvbWbtcLtvConfigFuseV9(CONFIG).getLtvPolicy();
+        CyvbWbtcLtvPolicy memory policy = getLtvPolicy();
 
         bool deleveraged;
         if (oldLtv >= _bpsToWad(policy.highTriggerBps)) {
@@ -305,7 +343,7 @@ contract FxMintCyvbWbtcFuse_v9 {
         uint256 requested = params_.length == 0 ? 0 : uint256(params_[0]);
         if (requested == 0) return;
 
-        uint256 position = ICyvbWbtcLtvConfigFuseV9(CONFIG).positionId();
+        uint256 position = _positionId();
         if (position == 0) return;
 
         uint256 vaultBalanceBefore = IERC20FxMintCyvbWBTCV9(VBWBTC).balanceOf(address(this));
@@ -317,7 +355,7 @@ contract FxMintCyvbWbtcFuse_v9 {
         // with collateral only. The safe amount is capped so this stage itself cannot
         // push the position above 55%.
         uint256 currentLtv = IFxLongPoolCyvbWBTCV9(FX_POOL).getPositionDebtRatio(position);
-        uint256 maxLtv = _bpsToWad(ICyvbWbtcLtvConfigFuseV9(CONFIG).INSTANT_WITHDRAW_MAX_LTV_BPS());
+        uint256 maxLtv = _bpsToWad(INSTANT_WITHDRAW_MAX_LTV_BPS);
 
         if (currentLtv < maxLtv) {
             uint256 safeNet = _safeCollateralOnlyNetWithdrawal(position);
@@ -386,7 +424,7 @@ contract FxMintCyvbWbtcFuse_v9 {
         if (rawGross > rawColls) rawGross = rawColls;
 
         uint256 postRawColl = rawColls - rawGross;
-        uint16 maxLtvBps = ICyvbWbtcLtvConfigFuseV9(CONFIG).INSTANT_WITHDRAW_MAX_LTV_BPS();
+        uint16 maxLtvBps = INSTANT_WITHDRAW_MAX_LTV_BPS;
         uint256 maxPostDebt = _desiredDebt(postRawColl, maxLtvBps);
 
         if (rawDebts > maxPostDebt) {
@@ -405,7 +443,7 @@ contract FxMintCyvbWbtcFuse_v9 {
     ) private returns (uint256 position) {
         _validateBorrowTarget(targetBps_);
 
-        uint256 existing = ICyvbWbtcLtvConfigFuseV9(CONFIG).positionId();
+        uint256 existing = _positionId();
         uint256 debtIncrease = _debtIncreaseForSupply(amount_, targetBps_, existing);
 
         _forceApprove(VBWBTC, POOL_MANAGER, amount_);
@@ -418,7 +456,7 @@ contract FxMintCyvbWbtcFuse_v9 {
         _forceApprove(VBWBTC, POOL_MANAGER, 0);
 
         if (existing == 0) {
-            ICyvbWbtcLtvConfigFuseV9(CONFIG).recordPositionId(position);
+            CyvbWbtcFxPositionStorage.ids().positionIds[FX_POOL] = position;
         } else if (position != existing) {
             revert ProtocolTopologyMismatch();
         }
@@ -595,7 +633,7 @@ contract FxMintCyvbWbtcFuse_v9 {
         (uint256 anchorPrice,,) =
             IFxPriceOracleCyvbWBTCV9(IFxLongPoolCyvbWBTCV9(FX_POOL).priceOracle()).getPrice();
 
-        uint16 maxLtvBps = ICyvbWbtcLtvConfigFuseV9(CONFIG).INSTANT_WITHDRAW_MAX_LTV_BPS();
+        uint16 maxLtvBps = INSTANT_WITHDRAW_MAX_LTV_BPS;
 
         // Minimum raw collateral that must remain so existing debt is <= maxLtv.
         // ceil(rawDebt * 1e18 * BPS / (anchorPrice * maxLtvBps)).
@@ -702,8 +740,33 @@ contract FxMintCyvbWbtcFuse_v9 {
         ).getPoolFeeRatio(FX_POOL, address(this));
     }
 
+    /// @notice The active LTV policy (this fuse version's immutables).
+    function getLtvPolicy() public view returns (CyvbWbtcLtvPolicy memory) {
+        return CyvbWbtcLtvPolicy(TARGET_LTV_BPS, HIGH_TRIGGER_BPS, HIGH_RESET_BPS, LOW_TRIGGER_BPS, LOW_RESET_BPS);
+    }
+
+    /// @notice The vault's f(x) position (official FxMintStorageLib slot; 0 = none). Only meaningful in vault context.
+    function _positionId() private view returns (uint256) {
+        return CyvbWbtcFxPositionStorage.ids().positionIds[FX_POOL];
+    }
+
+    function _validatePolicy(CyvbWbtcLtvPolicy memory p_) private pure {
+        if (
+            p_.targetLtvBps < MIN_TARGET_LTV_BPS || p_.targetLtvBps > MAX_TARGET_LTV_BPS ||
+            p_.highTriggerBps < MIN_HIGH_TRIGGER_BPS || p_.highTriggerBps > MAX_HIGH_TRIGGER_BPS ||
+            p_.highResetBps < MIN_HIGH_RESET_BPS || p_.highResetBps > MAX_HIGH_RESET_BPS ||
+            p_.lowTriggerBps < MIN_LOW_TRIGGER_BPS || p_.lowTriggerBps > MAX_LOW_TRIGGER_BPS ||
+            p_.lowResetBps < MIN_LOW_RESET_BPS || p_.lowResetBps > MAX_LOW_RESET_BPS
+        ) revert ValueOutOfRange();
+        // low trigger < low reset <= target <= high reset < high trigger
+        if (
+            p_.lowTriggerBps >= p_.lowResetBps || p_.lowResetBps > p_.targetLtvBps ||
+            p_.targetLtvBps > p_.highResetBps || p_.highResetBps >= p_.highTriggerBps
+        ) revert InvalidOrdering();
+    }
+
     function _requireVaultContext() private view {
-        if (ICyvbWbtcLtvConfigFuseV9(CONFIG).vault() != address(this)) revert WrongVaultContext();
+        if (address(this) != VAULT) revert WrongVaultContext();
     }
 
     function _requireRoute(address tokenIn_, address tokenOut_) private view {

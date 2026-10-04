@@ -104,7 +104,7 @@ jobs:
           echo "KAT -> vbUSDC route: $ROUTE"
 
           if [ "$ROUTE" = "0x" ]; then
-            echo "::notice::Route pending. Run ConfigureKatVbUsdcRoute_v1.s.sol before DeployCyvbUSDC_v3.s.sol."
+            echo "::notice::Route pending. Run ConfigureKatVbUsdcRoute_v1.s.sol before DeployCyvbUSDC_v4.s.sol."
             exit 0
           fi
 

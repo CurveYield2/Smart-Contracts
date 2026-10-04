@@ -133,7 +133,7 @@ Current production candidate reward fuse.
 
 Configures the direct KAT -> vbUSDC route on the existing CurveYield router through its threshold-1 Safe owner, sets route fee to zero, and installs the 900-second / 200-bps TWAP guard.
 
-`script/DeployCyvbUSDC_v3.s.sol`
+`script/DeployCyvbUSDC_v4.s.sol`
 
 Clones and configures the vault through the official IPOR factory. It refuses to deploy unless the KAT -> vbUSDC route is already present.
 
@@ -193,7 +193,7 @@ This must complete before the vault deploy script. It requires a private key bel
 
 Run:
 
-`DeployCyvbUSDC_v3.s.sol`
+`DeployCyvbUSDC_v4.s.sol`
 
 Required:
 - `PRIVATE_KEY`

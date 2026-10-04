@@ -1,4 +1,26 @@
-# CurveYield vbWBTC / cyvbWBTC — Katana — v1
+# CurveYield vbWBTC / cyvbWBTC — Katana
+
+## Current implementation (2026-10-04)
+
+Reworked to use official IPOR components wherever the strategy allows:
+
+| Piece | Implementation |
+|---|---|
+| 0.55% onboarding fee | IPOR-native `FeeManager.setDepositFee`; the fee shares are minted to the withdraw manager and burned for holders by the factory-installed `BurnRequestFeeFuse` (keeper job). No gateway. |
+| 0.35% instant-withdraw fee | IPOR-native `WithdrawManager.updateWithdrawFee`; IPOR burns the fee shares on exit. No gateway. |
+| Strategy | `contracts/FxMintCyvbWbtcFuse_v10.sol` — the only custom fuse. LTV policy folded in as validated immutables (a policy change = a new fuse version installed by the fuse manager); the f(x) position id is stored in IPOR's official `FxMintStorageLib` slot. Official `FxMintBorrowFuse` can't be used: it hard-caps the debt ratio at 40% and has no instant-withdraw path. |
+| Accounting | `contracts/FxMintCyvbWbtcBalanceFuse_v4.sol` (market 7). Official `FxMintBalanceFuse` can't be used: f(x) scales raw collateral to 18 decimals and the official fuse would value 8-decimal vbWBTC 1e10x too high. |
+| vbWBTC price | `contracts/FxMintVbWbtcPriceFeed_v1.sol` (f(x) anchor price; IPOR's Katana middleware has no vbWBTC source). |
+| Deployment | `script/DeployCyvbWBTC_v13.s.sol`. Owner = the cyavKAT vault owner `0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35` (override `FINAL_OWNER`); fee receiver = `0x47623C62f281807D615eeb4A2CEee9d97F9D3C49`. If the deployer is not the owner it renounces every setup role at the end. |
+| Tests | `test/CyvbWbtcFuseV10Test_v1.t.sol` (policy bounds / ordering, vault-context guard, balance fuse valuation). |
+
+Removed (superseded): both gateways and pre-hooks, `CyvbWbtcLtvConfig_v3`, fuse v9, balance fuse v3, deploy v12, the simulation script, the probe scripts and probe workflows.
+
+Live f(x) addresses (verified on-chain 2026-10-04): pool `0x49150F136C5a5Af361ECb06cB38A6205461E33CD`, pool manager `0x27b3eE81DF2Dd7356D5ac282e2416991A616f96a`, fxUSD `0x4c03ff0f44A55e7098a09016E02a01d3cdC2FDF9`, debt-ratio range 0.01%–67%. (The older addresses further down this file are stale.)
+
+---
+
+## Original specification (v1)
 
 ## Corrected specification
 
