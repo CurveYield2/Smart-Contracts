@@ -1,6 +1,6 @@
 # cyvbWBTC verification result v11
 
-- Commit tested: 16a8fa9526c168a55ebcc844ba59ef4ad77b558d
+- Commit tested: 8e9efe05d3a02436aa41f6286e42aff6946d699b
 - Build exit code: 0
 - Focused test exit code: 0
 - Live Katana preflight exit code: 0
@@ -12,121 +12,121 @@
     ╰ help: https://getfoundry.sh/forge/linting/unused-return
 
 warning[unused-return]: return value of an external call is not used
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:611:32
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:836:32
     │
-611 │         (, uint256 rawDebts) = IFxLongPoolCyvbWBTCV9(FX_POOL).getPosition(position_);
+836 │         (, uint256 rawDebts) = IFxLongPoolCyvbWBTCV9(FX_POOL).getPosition(position_);
     │                                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     │
     ╰ help: https://getfoundry.sh/forge/linting/unused-return
 
 warning[unused-return]: return value of an external call is not used
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:617:13
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:842:13
     │
-617 │ ┏             IERC4626FxMintCyvbWBTCV9(CYVBUSDC).redeem(
-618 │ ┃                 nestedShares,
-619 │ ┃                 address(this),
-620 │ ┃                 address(this)
-621 │ ┃             );
+842 │ ┏             IERC4626FxMintCyvbWBTCV9(CYVBUSDC).redeem(
+843 │ ┃                 nestedShares,
+844 │ ┃                 address(this),
+845 │ ┃                 address(this)
+846 │ ┃             );
     │ ┗━━━━━━━━━━━━━┛
     │
     ╰ help: https://getfoundry.sh/forge/linting/unused-return
 
 warning[unused-return]: return value of an external call is not used
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:636:9
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:861:9
     │
-636 │ ┏         IFxPoolManagerCyvbWBTCV9(POOL_MANAGER).operate(
-637 │ ┃             FX_POOL,
-638 │ ┃             position_,
-639 │ ┃             -_toInt(grossAmount_),
-640 │ ┃             0
-641 │ ┃         );
+861 │ ┏         IFxPoolManagerCyvbWBTCV9(POOL_MANAGER).operate(
+862 │ ┃             FX_POOL,
+863 │ ┃             position_,
+864 │ ┃             -_toInt(grossAmount_),
+865 │ ┃             0
+866 │ ┃         );
     │ ┗━━━━━━━━━┛
     │
     ╰ help: https://getfoundry.sh/forge/linting/unused-return
 
 warning[divide-before-multiply]: division before multiplication may lose precision
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:667:16
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:892:16
     │
-667 │         return (safeGrossToken * (FEE_PRECISION - withdrawFee)) / FEE_PRECISION;
+892 │         return (safeGrossToken * (FEE_PRECISION - withdrawFee)) / FEE_PRECISION;
     │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     │
     ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
 
 warning[unused-return]: return value of an external call is not used
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:649:13
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:874:13
     │
-649 │             IFxPriceOracleCyvbWBTCV9(IFxLongPoolCyvbWBTCV9(FX_POOL).priceOracle()).getPrice();
+874 │             IFxPriceOracleCyvbWBTCV9(IFxLongPoolCyvbWBTCV9(FX_POOL).priceOracle()).getPrice();
     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     │
     ╰ help: https://getfoundry.sh/forge/linting/unused-return
 
 warning[divide-before-multiply]: division before multiplication may lose precision
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:675:16
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:900:16
     │
-675 │         return (tokenAmount * (FEE_PRECISION - withdrawFee)) / FEE_PRECISION;
+900 │         return (tokenAmount * (FEE_PRECISION - withdrawFee)) / FEE_PRECISION;
     │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     │
     ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
 
 warning[divide-before-multiply]: division before multiplication may lose precision
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:689:16
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:914:16
     │
-689 │         return (collateralUsd * targetBps_) / BPS;
+914 │         return (collateralUsd * targetBps_) / BPS;
     │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     │
     ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
 
 warning[unused-return]: return value of an external call is not used
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:687:13
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:912:13
     │
-687 │             IFxPriceOracleCyvbWBTCV9(IFxLongPoolCyvbWBTCV9(FX_POOL).priceOracle()).getPrice();
+912 │             IFxPriceOracleCyvbWBTCV9(IFxLongPoolCyvbWBTCV9(FX_POOL).priceOracle()).getPrice();
     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     │
     ╰ help: https://getfoundry.sh/forge/linting/unused-return
 
 warning[unused-return]: return value of an external call is not used
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:695:13
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:920:13
     │
-695 │             IFxPriceOracleCyvbWBTCV9(IFxLongPoolCyvbWBTCV9(FX_POOL).priceOracle()).getPrice();
+920 │             IFxPriceOracleCyvbWBTCV9(IFxLongPoolCyvbWBTCV9(FX_POOL).priceOracle()).getPrice();
     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     │
     ╰ help: https://getfoundry.sh/forge/linting/unused-return
 
 warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:794:13
-    │
-794 │         if (deadline_ < block.timestamp) revert InvalidDeadline();
-    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    │
-    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+     ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:1020:13
+     │
+1020 │         if (deadline_ < block.timestamp) revert InvalidDeadline();
+     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     │
+     ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
 
 warning[unsafe-typecast]: typecast can truncate values
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:802:22
-    │
-802 │         if (value_ > uint256(type(int256).max)) revert AmountTooLargeForInt256();
-    │                      ━━━━━━━━━━━━━━━━━━━━━━━━━
-    │
-    ├ note: consider disabling this lint if you're certain the cast is safe
-    │       
-    │       // casting to 'uint256' is safe because [explain why]
-    │       // forge-lint: disable-next-line(unsafe-typecast)
-    │       
-    │       
-    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+     ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:1028:22
+     │
+1028 │         if (value_ > uint256(type(int256).max)) revert AmountTooLargeForInt256();
+     │                      ━━━━━━━━━━━━━━━━━━━━━━━━━
+     │
+     ├ note: consider disabling this lint if you're certain the cast is safe
+     │       
+     │       // casting to 'uint256' is safe because [explain why]
+     │       // forge-lint: disable-next-line(unsafe-typecast)
+     │       
+     │       
+     ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
 
 warning[unsafe-typecast]: typecast can truncate values
-    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v11.sol:803:16
-    │
-803 │         return int256(value_);
-    │                ━━━━━━━━━━━━━━
-    │
-    ├ note: consider disabling this lint if you're certain the cast is safe
-    │       
-    │       // casting to 'int256' is safe because [explain why]
-    │       // forge-lint: disable-next-line(unsafe-typecast)
-    │       
-    │       
-    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+     ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v12.sol:1029:16
+     │
+1029 │         return int256(value_);
+     │                ━━━━━━━━━━━━━━
+     │
+     ├ note: consider disabling this lint if you're certain the cast is safe
+     │       
+     │       // casting to 'int256' is safe because [explain why]
+     │       // forge-lint: disable-next-line(unsafe-typecast)
+     │       
+     │       
+     ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
 
 ~~~
 
@@ -134,16 +134,17 @@ warning[unsafe-typecast]: typecast can truncate values
 ~~~text
 No files changed, compilation skipped
 
-Ran 6 tests for cyvbWBTC/test/CyvbWbtcFuseV11Test_v1.t.sol:CyvbWbtcFuseV11Test_v1
-[PASS] testBalanceFuseRejectsWrongNestedAsset() (gas: 236386)
-[PASS] testBalanceFuseValuesNestedAndResidualInUsdWad() (gas: 173509)
-[PASS] testDefaultPolicyIsStoredImmutably() (gas: 37355)
-[PASS] testPolicyOrderingReverts() (gas: 23856)
-[PASS] testPolicyOutOfRangeReverts() (gas: 23857)
-[PASS] testStrategyCallsOutsideVaultContextRevert() (gas: 92019)
-Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 1.49ms (2.26ms CPU time)
+Ran 7 tests for cyvbWBTC/test/CyvbWbtcFuseV12Test_v1.t.sol:CyvbWbtcFuseV12Test_v1
+[PASS] testBalanceFuseRejectsWrongNestedAsset() (gas: 224555)
+[PASS] testBalanceFuseValuesNestedAndResidualInUsdWad() (gas: 326496)
+[PASS] testDefaultPolicyIsStoredImmutably() (gas: 45423)
+[PASS] testEarnSplitAbove100PercentReverts() (gas: 26387)
+[PASS] testPolicyOrderingReverts() (gas: 26403)
+[PASS] testPolicyOutOfRangeReverts() (gas: 26382)
+[PASS] testStrategyCallsOutsideVaultContextRevert() (gas: 140156)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 2.13ms (4.36ms CPU time)
 
-Ran 1 test suite in 8.78ms (1.49ms CPU time): 6 tests passed, 0 failed, 0 skipped (6 total tests)
+Ran 1 test suite in 8.82ms (2.13ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
 ~~~
 
 ## Live preflight
