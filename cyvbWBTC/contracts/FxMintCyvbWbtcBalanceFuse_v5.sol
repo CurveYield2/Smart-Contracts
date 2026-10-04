@@ -29,15 +29,21 @@ interface IERC4626BalanceCyvbWBTCV4 {
     function asset() external view returns (address);
 }
 
-/// @title FxMintCyvbWbtcBalanceFuse_v4
+interface IFxBaseBalanceCyvbWBTCV5 {
+    function balanceOf(address account) external view returns (uint256);
+    function previewRedeem(uint256 shares) external view returns (uint256 yieldOut, uint256 stableOut);
+}
+
+/// @title FxMintCyvbWbtcBalanceFuse_v5
 /// @notice Net USD-WAD value of cyvbWBTC's strategy (market 7): f(x) liquidation-value collateral - fxUSD debt
-///         + nested cyvbUSDC (at its PPS) + residual vbUSDC / fxUSD. Idle vbWBTC is counted by the vault itself.
+///         + nested cyvbUSDC (at its PPS) + the fxBASE earn pool (staked in its gauge or held for a pending redeem,
+///         valued at previewRedeem: fxUSD + vbUSDC at $1, like the fxUSD debt) + residual vbUSDC / fxUSD. Idle vbWBTC is counted by the vault itself.
 /// @dev Custom because IPOR's official FxMintBalanceFuse assumes f(x) raw collateral is in the token's own
 ///      decimals (true for WETH), while f(x) scales raw collateral to 18 decimals (vbWBTC: x1e10) - the official
 ///      fuse would overvalue an 8-decimal collateral 1e10x. (IPOR's Erc4626BalanceFuse is not deployed on Katana for
 ///      this market and would pull the full IPOR source into this repo, so the nested leg stays here too.)
 ///      The position id is read from IPOR's official FxMintStorageLib slot, written by the strategy fuse.
-contract FxMintCyvbWbtcBalanceFuse_v4 {
+contract FxMintCyvbWbtcBalanceFuse_v5 {
     bytes32 private constant FX_MINT_POSITION_IDS = 0xd6497e578ce2e2ee4effa1fadef2326ebdc8f2b065aece8657da626f367fe500;
     uint256 private constant WAD = 1e18;
     uint256 private constant FEE_PRECISION = 1e9;
@@ -52,11 +58,24 @@ contract FxMintCyvbWbtcBalanceFuse_v4 {
     address public immutable FXUSD;
     address public immutable VB_USDC;
     address public immutable CYVBUSDC;
+    address public immutable FXBASE;
+    address public immutable EARN_GAUGE;
 
     error InvalidAddress();
     error NestedVaultAssetMismatch();
 
-    constructor(uint256 marketId_, address fxPool_, address fxUsd_, address vbUsdc_, address cyvbUsdc_) {
+    constructor(
+        uint256 marketId_,
+        address fxPool_,
+        address fxUsd_,
+        address vbUsdc_,
+        address cyvbUsdc_,
+        address fxBase_,
+        address earnGauge_
+    ) {
+        if (fxBase_.code.length == 0 || earnGauge_.code.length == 0) revert InvalidAddress();
+        FXBASE = fxBase_;
+        EARN_GAUGE = earnGauge_;
         if (fxPool_.code.length == 0 || fxUsd_.code.length == 0 || vbUsdc_.code.length == 0 || cyvbUsdc_.code.length == 0) {
             revert InvalidAddress();
         }
@@ -73,6 +92,12 @@ contract FxMintCyvbWbtcBalanceFuse_v4 {
         total_ = _positionValue();
         uint256 nested = IERC4626BalanceCyvbWBTCV4(CYVBUSDC).balanceOf(address(this));
         if (nested != 0) total_ += _toWad(IERC4626BalanceCyvbWBTCV4(CYVBUSDC).convertToAssets(nested), VB_USDC);
+        uint256 earnShares = IFxBaseBalanceCyvbWBTCV5(EARN_GAUGE).balanceOf(address(this))
+            + IFxBaseBalanceCyvbWBTCV5(FXBASE).balanceOf(address(this));
+        if (earnShares != 0) {
+            (uint256 yieldOut, uint256 stableOut) = IFxBaseBalanceCyvbWBTCV5(FXBASE).previewRedeem(earnShares);
+            total_ += _toWad(yieldOut, FXUSD) + _toWad(stableOut, VB_USDC);
+        }
         total_ += _toWad(IERC20MetaBalanceCyvbWBTCV4(VB_USDC).balanceOf(address(this)), VB_USDC);
         total_ += _toWad(IERC20MetaBalanceCyvbWBTCV4(FXUSD).balanceOf(address(this)), FXUSD);
     }

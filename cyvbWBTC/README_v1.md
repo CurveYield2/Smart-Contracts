@@ -1,24 +1,29 @@
 # CurveYield vbWBTC / cyvbWBTC — Katana
 
-## Current implementation (2026-10-04)
+## Current implementation (2026-10-04, v14)
 
-Reworked to use official IPOR components wherever the strategy allows:
+See `EARN_POOL_SPEC_v1.md` for the design. Contracts:
 
-| Piece | Implementation |
+| Contract | Role |
 |---|---|
-| 0.55% onboarding fee | IPOR-native `FeeManager.setDepositFee`; the fee shares are minted to the withdraw manager and burned for holders by `contracts/IporBurnRequestFeeFuse_v1.sol` (keeper job) - a port of IPOR's corrected upstream fuse, because the Katana factory still installs the pre-IL-6952 fuse that reads a stale withdraw-manager slot. No gateway. |
-| 0.60% instant-withdraw fee | IPOR-native `WithdrawManager.updateWithdrawFee`; IPOR burns the fee shares on exit. No gateway. |
-| Strategy | `contracts/FxMintCyvbWbtcFuse_v11.sol` — the only custom fuse. At most one f(x) `operate()` per transaction (Katana's PoolManager locks after one); 1% instant-withdraw over-delivery; a full exit the nested stable leg can't cover reverts `InsufficientNestedStable` (that tail goes through a scheduled withdrawal). LTV policy folded in as validated immutables (a policy change = a new fuse version installed by the fuse manager); the f(x) position id is stored in IPOR's official `FxMintStorageLib` slot. Official `FxMintBorrowFuse` can't be used: it hard-caps the debt ratio at 40% and has no instant-withdraw path. |
-| Accounting | `contracts/FxMintCyvbWbtcBalanceFuse_v4.sol` (market 7). Official `FxMintBalanceFuse` can't be used: f(x) scales raw collateral to 18 decimals and the official fuse would value 8-decimal vbWBTC 1e10x too high. |
-| vbWBTC price | `contracts/FxMintVbWbtcPriceFeed_v1.sol` (f(x) anchor price; IPOR's Katana middleware has no vbWBTC source). |
-| Deployment | `script/DeployCyvbWBTC_v13.s.sol`. Owner = the cyavKAT vault owner `0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35` (override `FINAL_OWNER`); fee receiver = `0x47623C62f281807D615eeb4A2CEee9d97F9D3C49`. If the deployer is not the owner it renounces every setup role at the end. |
-| Tests | `test/CyvbWbtcFuseV11Test_v1.t.sol` (policy bounds / ordering, vault-context guard, balance fuse valuation). |
+| `contracts/FxMintCyvbWbtcFuse_v12.sol` | The strategy fuse. vbWBTC -> f(x) collateral (50% LTV policy, immutable) -> fxUSD split `earnBps` to the fxBASE earn pool (staked in its gauge) / rest -> vbUSDC -> cyvbUSDC. One f(x) `operate()` per tx. PPS guard on deploy (chunked), instant and scheduled exits. |
+| `contracts/FxMintCyvbWbtcBalanceFuse_v5.sol` | Market-7 accounting: f(x) position + cyvbUSDC + earn pool + residuals (the official FxMintBalanceFuse mis-scales 8-decimal collateral). |
+| `contracts/CyvbWbtcWithdrawManager_v1.sol` | IPOR WithdrawManager semantics + automated scheduled withdrawals (the request starts the fxBASE redeem; a permissionless `finish()` releases). Scheduled withdrawals start **disabled** (earn pool off). |
+| `contracts/IporBurnRequestFeeFuse_v1.sol` | Port of IPOR's corrected burn fuse (the factory-installed one reads a stale slot). |
+| `contracts/IporUpdateWithdrawManagerFuse_v1.sol` | Port of IPOR's maintenance fuse; installs the custom withdraw manager. |
+| `contracts/FxMintVbWbtcPriceFeed_v1.sol` | vbWBTC price from the f(x) oracle. |
+| `script/DeployCyvbWBTC_v14.s.sol` | Official IPOR factory clone + all of the above. Owner = cyavKAT owner `0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35`, fee receiver = fee Safe `0x47623C62f281807D615eeb4A2CEee9d97F9D3C49`. |
 
-Fork simulation (2026-10-04, local Katana anvil): routes, both deploys and `_verifyDeployment` pass; onboarding fee 0.55% to the withdraw manager and burned; deploy at 50.00% LTV; instant redeems 2/5/10/40/80% pass (LTV capped at 55%); 100% reverts `InsufficientNestedStable` as designed (~2.5% stable-leg shortfall); `rebalanceLtv` both directions. Note: fxUSD trades ~1.1% below peg on Sushi, which is most of the ~0.67% PPS cost of deploying capital (and returns on unwind).
+Launch settings: **earn split 0%** (the fxBASE gauge has never distributed weETH; the f(x) team has been contacted) and scheduled withdrawals off; fees **0.75% onboarding / 1.00% instant / 0.50% scheduled**. When the gauge is funded: install a fuse version with `earnBps` 6000, `setFuses` on the manager, `setScheduledWithdrawalsEnabled(true)`, and add the weETH reward fuse.
 
-Removed (superseded): both gateways and pre-hooks, `CyvbWbtcLtvConfig_v3`, fuse v9, balance fuse v3, deploy v12, the simulation script, the probe scripts and probe workflows.
+Fork-simulated (local Katana anvil, 2026-10-04):
+- both deploys and their built-in verification;
+- deposit and onboarding fee;
+- chunked deploys, 6 x 0.05 vbWBTC at ~0.57% cost each (PPS guard passes). Chunks need ~30 min spacing with the fxUSD/vbUSDC pool restored, or f(x) pauses borrowing on its TWAP-deviation check;
+- instant exits up to 95% at ~99% of share value (the last ~5% reverts InsufficientNestedStable);
+- scheduled 50% exit at 0% earn (finish immediately, 99.99% of value) and at 60% earn (1 h fxBASE lock).
 
-Live f(x) addresses (verified on-chain 2026-10-04): pool `0x49150F136C5a5Af361ECb06cB38A6205461E33CD`, pool manager `0x27b3eE81DF2Dd7356D5ac282e2416991A616f96a`, fxUSD `0x4c03ff0f44A55e7098a09016E02a01d3cdC2FDF9`, debt-ratio range 0.01%–67%. (The older addresses further down this file are stale.)
+The performance fee applies to fee-burn PPS gains (accepted).
 
 ---
 
