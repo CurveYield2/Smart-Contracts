@@ -1,0 +1,45 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = []
+solc = "0.8.30"
+evm_version = "prague"
+via_ir = true
+optimizer = true
+optimizer_runs = 1
+bytecode_hash = "none"
+allow_paths = ["../ipor-fusion"]
+remappings = [
+  "contracts/=../ipor-fusion/contracts/",
+  "@openzeppelin/=../ipor-fusion/node_modules/@openzeppelin/",
+  "@morpho-org/morpho-blue/=../ipor-fusion/node_modules/@morpho-org/morpho-blue/",
+  "managers/=../ipor-fusion/contracts/managers/",
+  "interfaces/=../ipor-fusion/contracts/interfaces/",
+  "libraries/=../ipor-fusion/contracts/libraries/",
+  "@uniswap/v3-core/=../ipor-fusion/node_modules/@uniswap/v3-core/",
+  "forge-std/=../ipor-fusion/lib/forge-std/src/",
+]
+fs_permissions = [{ access = "read", path = "./" }, { access = "read-write", path = "./deployments" }]
+
+[rpc_endpoints]
+katana = "${KATANA_RPC_URL}"
+
+[lint]
+lint_on_build = false
+
+# EIP-170 size profile: the vault executor and the withdraw manager v2 are built and deployed from it. It is solc
+# 0.8.30's default Yul optimizer sequence with ONLY the FunctionSpecializer step ("F") removed. The specializer cloned
+# internal functions once per distinct set of constant arguments (the executor's _fulfilWith was compiled 4x, the
+# manager's fee burn 3x); it is a gas-only optimisation, so behaviour is unchanged. Sizes: executor 22,680 bytes
+# (default sequence: 30,845), withdraw manager v2 22,756 (default: 24,651). Every other contract uses the default profile.
+# Build: FOUNDRY_PROFILE=size forge build src/executor/CurveYieldVaultExecutor.sol src/withdraw/CurveYieldWithdrawalManagerV2.sol
+[profile.size]
+out = "out-size"
+cache_path = "cache-size"
+[profile.size.optimizer_details]
+yul = true
+[profile.size.optimizer_details.yulDetails]
+stackAllocation = true
+optimizerSteps = "dhfoDgvulfnTUtnIfxa[r]EscLMVcul [j]Trpeulxa[r]cLgvifMCTUca[r]LSsTOtfDnca[r]IulcscCTUtgvifMx[scCTUt] TOntnfDIulgvifMjmul[jul] VcTOcul jmul:fDnTOcmu"
