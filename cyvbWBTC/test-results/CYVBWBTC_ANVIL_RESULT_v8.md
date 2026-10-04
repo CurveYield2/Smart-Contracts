@@ -1,12 +1,12 @@
 # cyvbWBTC Anvil live-fork result v8
 
-- Source commit: b9545a1b8ae70b79420bf57b6a7e8d28d8a5e809
+- Source commit: 127663a2c107704c5599d8795e575ee123c6a6d4
 - Anvil chain ID: 747474
 - Fork source: Katana live RPC
 - Production state mutated: no
 - Setup exit code: 1
 - Simulation exit code: 1
-- Fork block seen by Anvil: 44347404
+- Fork block seen by Anvil: 44347579
 - Anvil deployer: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
 - vbWBTC holder used on fork: 
 - Simulated gross deposit: 1000000 base units
@@ -14,7 +14,7 @@
 ## Setup diagnostics
 ~~~text
 chain_id=747474
-fork_block=44347404
+fork_block=44347579
 deployer=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
 route_fxusd_vbusdc=
 route_vbusdc_fxusd=
