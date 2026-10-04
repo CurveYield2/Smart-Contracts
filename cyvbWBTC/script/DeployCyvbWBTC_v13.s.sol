@@ -600,6 +600,19 @@ contract DeployCyvbWBTC_v13 is Script {
         address finalOwner_,
         DeployedComponents memory components_
     ) private view {
+        _verifyIdentityAndRoles(instance_, keeper_, finalOwner_);
+        _verifyPricesAndMarkets(instance_, nested_, components_);
+        _verifyFeesAndGateway(instance_, components_);
+        _verifyConfigAndCustomComponents(instance_, nested_, finalOwner_, components_);
+        _verifyCanonicalIporFuses();
+        _verifyRoutes();
+    }
+
+    function _verifyIdentityAndRoles(
+        FusionInstanceCyvbWBTCV13 memory instance_,
+        address keeper_,
+        address finalOwner_
+    ) private view {
         require(instance_.underlyingToken == VBWBTC, "underlying mismatch");
         require(
             keccak256(bytes(instance_.assetName)) == keccak256(bytes("CurveYield vbWBTC")),
@@ -610,7 +623,9 @@ contract DeployCyvbWBTC_v13 is Script {
             "symbol mismatch"
         );
 
-        IAccessManagerCyvbWBTCV13 access = IAccessManagerCyvbWBTCV13(instance_.accessManager);
+        IAccessManagerCyvbWBTCV13 access =
+            IAccessManagerCyvbWBTCV13(instance_.accessManager);
+
         (bool alpha,) = access.hasRole(ALPHA_ROLE, keeper_);
         require(alpha, "keeper lacks ALPHA");
 
@@ -618,11 +633,28 @@ contract DeployCyvbWBTC_v13 is Script {
             (bool ownerRole,) = access.hasRole(OWNER_ROLE, finalOwner_);
             require(ownerRole, "final owner role missing");
         }
+    }
 
-        IPriceManagerCyvbWBTCV13 prices = IPriceManagerCyvbWBTCV13(instance_.priceManager);
-        require(prices.getSourceOfAssetPrice(VBWBTC) == components_.priceFeed, "vbWBTC source wrong");
-        require(prices.getSourceOfAssetPrice(VBUSDC) == IPOR_USD_PRICE_FEED, "vbUSDC source wrong");
-        require(prices.getSourceOfAssetPrice(FXUSD) == IPOR_USD_PRICE_FEED, "fxUSD source wrong");
+    function _verifyPricesAndMarkets(
+        FusionInstanceCyvbWBTCV13 memory instance_,
+        address nested_,
+        DeployedComponents memory components_
+    ) private view {
+        IPriceManagerCyvbWBTCV13 prices =
+            IPriceManagerCyvbWBTCV13(instance_.priceManager);
+
+        require(
+            prices.getSourceOfAssetPrice(VBWBTC) == components_.priceFeed,
+            "vbWBTC source wrong"
+        );
+        require(
+            prices.getSourceOfAssetPrice(VBUSDC) == IPOR_USD_PRICE_FEED,
+            "vbUSDC source wrong"
+        );
+        require(
+            prices.getSourceOfAssetPrice(FXUSD) == IPOR_USD_PRICE_FEED,
+            "fxUSD source wrong"
+        );
 
         IPlasmaVaultGovernanceCyvbWBTCV13 vault =
             IPlasmaVaultGovernanceCyvbWBTCV13(instance_.plasmaVault);
@@ -641,54 +673,107 @@ contract DeployCyvbWBTC_v13 is Script {
             "swapper balance wrong"
         );
 
-        bytes32[] memory erc20Subs = vault.getMarketSubstrates(ERC20_BALANCE_MARKET_ID);
-        require(erc20Subs.length == 3, "market-7 substrate count");
-        require(erc20Subs[0] == _addressToBytes32(FX_POOL), "f(x) pool substrate");
-        require(erc20Subs[1] == _addressToBytes32(FXUSD), "fxUSD substrate");
-        require(erc20Subs[2] == _addressToBytes32(VBUSDC), "vbUSDC substrate");
-
-        bytes32[] memory nestedSubs = vault.getMarketSubstrates(ERC4626_MARKET_ID);
-        require(
-            nestedSubs.length == 1 && nestedSubs[0] == _addressToBytes32(nested_),
-            "ERC4626 substrate wrong"
-        );
-
-        uint256[] memory nestedDeps =
-            vault.getDependencyBalanceGraph(ERC4626_MARKET_ID);
-        require(
-            nestedDeps.length == 1 && nestedDeps[0] == ERC20_BALANCE_MARKET_ID,
-            "ERC4626 dependencies wrong"
-        );
-
-        uint256[] memory swapDeps =
-            vault.getDependencyBalanceGraph(UNIVERSAL_SWAPPER_V2_MARKET_ID);
-        require(
-            swapDeps.length == 1 && swapDeps[0] == ERC20_BALANCE_MARKET_ID,
-            "swapper dependencies wrong"
-        );
+        _verifyMarketSubstrates(vault, nested_);
+        _verifyMarketDependencies(vault);
 
         address[] memory instant = vault.getInstantWithdrawalFuses();
         require(
             instant.length == 1 && instant[0] == components_.instantFuse,
             "instant fuse wrong"
         );
+    }
 
-        IFeeManagerCyvbWBTCV13 fees = IFeeManagerCyvbWBTCV13(instance_.feeManager);
-        require(fees.getTotalManagementFee() == EXPECTED_TOTAL_MANAGEMENT_BPS, "management total");
-        require(fees.getTotalPerformanceFee() == EXPECTED_TOTAL_PERFORMANCE_BPS, "performance total");
+    function _verifyMarketSubstrates(
+        IPlasmaVaultGovernanceCyvbWBTCV13 vault_,
+        address nested_
+    ) private view {
+        bytes32[] memory erc20Subs =
+            vault_.getMarketSubstrates(ERC20_BALANCE_MARKET_ID);
+
+        require(erc20Subs.length == 3, "market-7 substrate count");
+        require(erc20Subs[0] == _addressToBytes32(FX_POOL), "f(x) pool substrate");
+        require(erc20Subs[1] == _addressToBytes32(FXUSD), "fxUSD substrate");
+        require(erc20Subs[2] == _addressToBytes32(VBUSDC), "vbUSDC substrate");
+
+        bytes32[] memory nestedSubs =
+            vault_.getMarketSubstrates(ERC4626_MARKET_ID);
+
+        require(
+            nestedSubs.length == 1 && nestedSubs[0] == _addressToBytes32(nested_),
+            "ERC4626 substrate wrong"
+        );
+    }
+
+    function _verifyMarketDependencies(
+        IPlasmaVaultGovernanceCyvbWBTCV13 vault_
+    ) private view {
+        uint256[] memory nestedDeps =
+            vault_.getDependencyBalanceGraph(ERC4626_MARKET_ID);
+
+        require(
+            nestedDeps.length == 1 && nestedDeps[0] == ERC20_BALANCE_MARKET_ID,
+            "ERC4626 dependencies wrong"
+        );
+
+        uint256[] memory swapDeps =
+            vault_.getDependencyBalanceGraph(UNIVERSAL_SWAPPER_V2_MARKET_ID);
+
+        require(
+            swapDeps.length == 1 && swapDeps[0] == ERC20_BALANCE_MARKET_ID,
+            "swapper dependencies wrong"
+        );
+    }
+
+    function _verifyFeesAndGateway(
+        FusionInstanceCyvbWBTCV13 memory instance_,
+        DeployedComponents memory components_
+    ) private view {
+        IFeeManagerCyvbWBTCV13 fees =
+            IFeeManagerCyvbWBTCV13(instance_.feeManager);
+
+        require(
+            fees.getTotalManagementFee() == EXPECTED_TOTAL_MANAGEMENT_BPS,
+            "management total"
+        );
+        require(
+            fees.getTotalPerformanceFee() == EXPECTED_TOTAL_PERFORMANCE_BPS,
+            "performance total"
+        );
         require(fees.getDepositFee() == 0, "native deposit fee");
         require(
             IWithdrawManagerCyvbWBTCV13(instance_.withdrawManager).getWithdrawFee() == 0,
             "native withdraw fee"
         );
 
-        require(CyvbWbtcGateway_v3(components_.gateway).VAULT() == instance_.plasmaVault, "gateway vault");
-        require(CyvbWbtcGateway_v3(components_.gateway).ASSET() == VBWBTC, "gateway asset");
-        require(CyvbWbtcGatewayGatePreHook_v3(components_.preHook).GATEWAY() == components_.gateway, "prehook gateway");
+        require(
+            CyvbWbtcGateway_v3(components_.gateway).VAULT() == instance_.plasmaVault,
+            "gateway vault"
+        );
+        require(
+            CyvbWbtcGateway_v3(components_.gateway).ASSET() == VBWBTC,
+            "gateway asset"
+        );
+        require(
+            CyvbWbtcGatewayGatePreHook_v3(components_.preHook).GATEWAY() ==
+                components_.gateway,
+            "prehook gateway"
+        );
+    }
 
-        CyvbWbtcLtvConfig_v3 config = CyvbWbtcLtvConfig_v3(components_.config);
+    function _verifyConfigAndCustomComponents(
+        FusionInstanceCyvbWBTCV13 memory instance_,
+        address nested_,
+        address finalOwner_,
+        DeployedComponents memory components_
+    ) private view {
+        CyvbWbtcLtvConfig_v3 config =
+            CyvbWbtcLtvConfig_v3(components_.config);
+
         require(config.vault() == instance_.plasmaVault, "config vault");
-        require(config.INSTANT_WITHDRAW_MAX_LTV_BPS() == 5500, "instant max LTV");
+        require(
+            config.INSTANT_WITHDRAW_MAX_LTV_BPS() == 5500,
+            "instant max LTV"
+        );
 
         CyvbWbtcLtvConfig_v3.LtvPolicy memory policy = config.getLtvPolicy();
         require(policy.targetLtvBps == 5000, "target LTV");
@@ -698,24 +783,42 @@ contract DeployCyvbWBTC_v13 is Script {
         require(policy.lowResetBps == 5000, "low reset");
 
         if (finalOwner_ != instance_.initialOwner) {
-            require(config.pendingOwner() == finalOwner_, "config handoff missing");
+            require(
+                config.pendingOwner() == finalOwner_,
+                "config handoff missing"
+            );
         }
 
         require(
-            FxMintCyvbWbtcPositionFuse_v3(components_.positionFuse).FX_POOL() == FX_POOL,
+            FxMintCyvbWbtcPositionFuse_v3(components_.positionFuse).MARKET_ID() ==
+                ERC20_BALANCE_MARKET_ID,
+            "position fuse market"
+        );
+        require(
+            FxMintCyvbWbtcPositionFuse_v3(components_.positionFuse).FX_POOL() ==
+                FX_POOL,
             "position fuse pool"
         );
         require(
-            FxMintCyvbWbtcErc20BalanceFuse_v5(components_.fxBalanceFuse).FX_POOL() == FX_POOL,
+            FxMintCyvbWbtcErc20BalanceFuse_v5(components_.fxBalanceFuse).MARKET_ID() ==
+                ERC20_BALANCE_MARKET_ID,
+            "balance fuse market"
+        );
+        require(
+            FxMintCyvbWbtcErc20BalanceFuse_v5(components_.fxBalanceFuse).FX_POOL() ==
+                FX_POOL,
             "balance fuse pool"
         );
         require(
-            FxMintCyvbWbtcInstantWithdrawFuse_v4(components_.instantFuse).CYVBUSDC() == nested_,
+            FxMintCyvbWbtcInstantWithdrawFuse_v4(components_.instantFuse).MARKET_ID() ==
+                ERC4626_MARKET_ID,
+            "instant fuse market"
+        );
+        require(
+            FxMintCyvbWbtcInstantWithdrawFuse_v4(components_.instantFuse).CYVBUSDC() ==
+                nested_,
             "instant nested"
         );
-
-        _verifyCanonicalIporFuses();
-        _verifyRoutes();
     }
 
     function _addressToBytes32(address address_) private pure returns (bytes32) {
