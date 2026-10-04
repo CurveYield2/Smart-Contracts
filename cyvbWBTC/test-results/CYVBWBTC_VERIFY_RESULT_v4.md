@@ -1,6 +1,6 @@
 # cyvbWBTC verification result v4
 
-- Commit tested: 06c547f3dc75ce7d4b7806359b7b25a12a9687b2
+- Commit tested: fc14cf4d4328fb056f386378c7ef27d009b6e8c8
 - Build exit code: 1
 - Focused test exit code: 0
 - Live Katana preflight exit code: 0
@@ -9,7 +9,7 @@
 ## Build
 ~~~text
 Compiling 32 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.51s
+Solc 0.8.30 finished in 1.47s
 Error: Compiler run failed:
 Error: Compiler error (/solidity/libsolidity/codegen/LValue.cpp:50): Stack too deep. Try compiling with `--via-ir` (cli) or the equivalent `viaIR: true` (standard JSON) while enabling the optimizer. Otherwise, try removing local variables.
    --> cyvbWBTC/script/SimulateCyvbWBTC_v2.s.sol:166:27:
@@ -21,7 +21,7 @@ Error: Compiler error (/solidity/libsolidity/codegen/LValue.cpp:50): Stack too d
 ## Tests
 ~~~text
 Compiling 28 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.32s
+Solc 0.8.30 finished in 1.31s
 Compiler run successful!
 
 Ran 7 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v3.t.sol:CyvbWbtcCoreTest_v3
@@ -32,9 +32,9 @@ Ran 7 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v3.t.sol:CyvbWbtcCoreTest_v3
 [PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 420396)
 [PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321019)
 [PASS] test_previewFinalRedeemWaivesExitFee() (gas: 161956)
-Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 1.42ms (1.70ms CPU time)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 1.64ms (1.83ms CPU time)
 
-Ran 1 test suite in 9.01ms (1.42ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
+Ran 1 test suite in 8.45ms (1.64ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
 ~~~
 
 ## Live preflight
