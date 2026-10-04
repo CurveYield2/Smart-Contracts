@@ -1,6 +1,6 @@
 # cyvbWBTC verification result v4
 
-- Commit tested: a6d002188b68b6635d6841ea39b13eea268fdce9
+- Commit tested: b506c7f97288413aa4ab89d8fc3ccb597a2ed384
 - Build exit code: 0
 - Focused test exit code: 0
 - Live Katana preflight exit code: 0
@@ -142,9 +142,9 @@ Ran 7 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v3.t.sol:CyvbWbtcCoreTest_v3
 [PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 420396)
 [PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321019)
 [PASS] test_previewFinalRedeemWaivesExitFee() (gas: 161956)
-Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 1.37ms (1.87ms CPU time)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 1.26ms (1.09ms CPU time)
 
-Ran 1 test suite in 8.66ms (1.37ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
+Ran 1 test suite in 6.38ms (1.26ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
 ~~~
 
 ## Live preflight
