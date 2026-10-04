@@ -1,0 +1,72 @@
+name: cyvbWBTC Live f(x) Whitelist Probe v1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/cyvbWBTC_live_fx_whitelist_probe_v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Probe live Katana f(x) smart-wallet enforcement
+        shell: bash
+        run: |
+          set -euo pipefail
+          RPC=https://katana.drpc.org/
+          MANAGER=0xFae375C9eA6636c40deB92DD91B7dbbF51BD3C68
+          POOL=0xE32B9b4C8f776687Ec54B4b6B62DbD9ce5fd4b99
+          CONTRACT_CALLER=0x01F9894f92ea9224fECc8C35482E20a05De13582
+
+          echo "manager_code=$(cast code "$MANAGER" --rpc-url "$RPC" | head -c 66)"
+          WHITELIST=$(cast call "$MANAGER" "whitelist()(address)" --rpc-url "$RPC")
+          echo "live_whitelist=$WHITELIST"
+
+          echo "whitelist_code=$(cast code "$WHITELIST" --rpc-url "$RPC" | head -c 66)"
+          OWNER=$(cast call "$WHITELIST" "owner()(address)" --rpc-url "$RPC")
+          echo "whitelist_owner=$OWNER"
+
+          CHECK=$(cast call "$WHITELIST" "check(address)(bool)" "$CONTRACT_CALLER" --rpc-url "$RPC")
+          echo "contract_caller=$CONTRACT_CALLER"
+          echo "contract_caller_whitelisted=$CHECK"
+
+          EXPECTED=$(cast sig "ErrorTopLevelCall()")
+          echo "expected_ErrorTopLevelCall_selector=$EXPECTED"
+
+          set +e
+          OUT=$(cast call "$MANAGER"             "operate(address,uint256,int256,int256)(uint256)"             "$POOL" 0 0 0             --from "$CONTRACT_CALLER"             --rpc-url "$RPC" 2>&1)
+          CODE=$?
+          set -e
+
+          echo "operate_from_unapproved_contract_exit=$CODE"
+          echo "operate_from_unapproved_contract_output=$OUT"
+
+          if [ "$CHECK" != "false" ]; then
+            echo "::error::Chosen contract caller is unexpectedly whitelisted"
+            exit 1
+          fi
+          if [ "$CODE" -eq 0 ]; then
+            echo "::error::operate unexpectedly succeeded from unapproved contract caller"
+            exit 1
+          fi
+
+          LOWER_OUT=$(printf '%s' "$OUT" | tr '[:upper:]' '[:lower:]')
+          LOWER_EXPECTED=$(printf '%s' "$EXPECTED" | tr '[:upper:]' '[:lower:]')
+          if [[ "$LOWER_OUT" != *"$LOWER_EXPECTED"* ]] && [[ "$LOWER_OUT" != *"errortoplevelcall"* ]]; then
+            echo "::error::operate reverted, but not with ErrorTopLevelCall evidence"
+            exit 1
+          fi
+
+          echo "LIVE_ENFORCEMENT_CONFIRMED=true"
