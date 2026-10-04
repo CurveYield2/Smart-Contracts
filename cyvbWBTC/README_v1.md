@@ -69,7 +69,7 @@ Behavior:
 
 ### Configurable LTV policy
 
-All five policy values above are governance-configurable within ±10 **percentage points** of their defaults:
+All six policy values above are governance-configurable within ±10 **percentage points** of their defaults:
 
 - Normal target: 40%–60%
 - Withdrawal ceiling: 45%–65%
