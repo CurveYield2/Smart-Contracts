@@ -1,6 +1,6 @@
 # cyvbWBTC verification result v1
 
-- Commit tested: 0e4e743b1f9d139914236cb6f9c3918fb0b64f78
+- Commit tested: 7b44a6bf1ac61a8fd823ee0647081b209c5cf4aa
 - Build exit code: 1
 - Focused test exit code: 1
 - Live Katana preflight exit code: 1
@@ -8,9 +8,9 @@
 
 ## Build
 ~~~text
-Warning: dynamic test linking disabled for 5 files: error: invalid checksummed address
-Compiling 43 files with Solc 0.8.30
-Solc 0.8.30 finished in 497.84ms
+Warning: dynamic test linking disabled for 6 files: error: invalid checksummed address
+Compiling 45 files with Solc 0.8.30
+Solc 0.8.30 finished in 423.59ms
 Error: Compiler run failed:
 Error (9429): This looks like an address but has an invalid checksum. Correct checksummed address: "0xE32B9b4C8f776687Ec54B4b6B62DbD9ce5fd4b99". If this is not used as an address, please prepend '00'. For more information please see https://docs.soliditylang.org/en/develop/types.html#address-literals
 SyntaxError: This looks like an address but has an invalid checksum. Correct checksummed address: "0xE32B9b4C8f776687Ec54B4b6B62DbD9ce5fd4b99". If this is not used as an address, please prepend '00'. For more information please see https://docs.soliditylang.org/en/develop/types.html#address-literals
@@ -36,8 +36,8 @@ SyntaxError: This looks like an address but has an invalid checksum. Correct che
 
 ## Tests
 ~~~text
-Compiling 38 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.38s
+Compiling 39 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.14s
 Error: Compiler run failed:
 Error: Compiler error (/solidity/libsolidity/codegen/LValue.cpp:50): Stack too deep. Try compiling with `--via-ir` (cli) or the equivalent `viaIR: true` (standard JSON) while enabling the optimizer. Otherwise, try removing local variables.
    --> cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v2.sol:362:33:
