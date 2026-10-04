@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
-import "../contracts/FxMintCyvbWbtcFuse_v10.sol";
+import "../contracts/FxMintCyvbWbtcFuse_v11.sol";
 import "../contracts/FxMintCyvbWbtcBalanceFuse_v4.sol";
 
 contract MockTokenCyvbV10 {
@@ -56,7 +56,7 @@ contract MockNestedCyvbV10 {
 contract MockCodeCyvbV10 {}
 
 /// @notice Focused checks for the single cyvbWBTC strategy fuse (LTV policy folded in) and its balance fuse.
-contract CyvbWbtcFuseV10Test_v1 is Test {
+contract CyvbWbtcFuseV11Test_v1 is Test {
     MockTokenCyvbV10 internal vbWbtc;
     MockTokenCyvbV10 internal vbUsdc;
     MockTokenCyvbV10 internal fxUsd;
@@ -83,15 +83,15 @@ contract CyvbWbtcFuseV10Test_v1 is Test {
         return CyvbWbtcLtvPolicy({targetLtvBps: t_, highTriggerBps: ht_, highResetBps: hr_, lowTriggerBps: lt_, lowResetBps: lr_});
     }
 
-    function _deploy(CyvbWbtcLtvPolicy memory policy_) internal returns (FxMintCyvbWbtcFuse_v10) {
-        return new FxMintCyvbWbtcFuse_v10(
+    function _deploy(CyvbWbtcLtvPolicy memory policy_) internal returns (FxMintCyvbWbtcFuse_v11) {
+        return new FxMintCyvbWbtcFuse_v11(
             7, vault, policy_, manager, address(pool), address(fxBase), address(fxUsd), address(vbWbtc),
             address(vbUsdc), address(nested), router
         );
     }
 
     function testDefaultPolicyIsStoredImmutably() public {
-        FxMintCyvbWbtcFuse_v10 fuse = _deploy(_policy(5_000, 6_000, 5_800, 4_500, 5_000));
+        FxMintCyvbWbtcFuse_v11 fuse = _deploy(_policy(5_000, 6_000, 5_800, 4_500, 5_000));
         CyvbWbtcLtvPolicy memory p = fuse.getLtvPolicy();
         assertEq(p.targetLtvBps, 5_000);
         assertEq(p.highTriggerBps, 6_000);
@@ -104,28 +104,28 @@ contract CyvbWbtcFuseV10Test_v1 is Test {
     }
 
     function testPolicyOutOfRangeReverts() public {
-        vm.expectRevert(FxMintCyvbWbtcFuse_v10.ValueOutOfRange.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v11.ValueOutOfRange.selector);
         _deploy(_policy(5_600, 6_000, 5_800, 4_500, 5_000)); // target above 55%
-        vm.expectRevert(FxMintCyvbWbtcFuse_v10.ValueOutOfRange.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v11.ValueOutOfRange.selector);
         _deploy(_policy(5_000, 6_700, 5_800, 4_500, 5_000)); // high trigger above 66%
     }
 
     function testPolicyOrderingReverts() public {
-        vm.expectRevert(FxMintCyvbWbtcFuse_v10.InvalidOrdering.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v11.InvalidOrdering.selector);
         _deploy(_policy(5_000, 6_000, 5_800, 4_900, 4_800)); // low trigger >= low reset
-        vm.expectRevert(FxMintCyvbWbtcFuse_v10.InvalidOrdering.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v11.InvalidOrdering.selector);
         _deploy(_policy(5_400, 6_000, 5_300, 4_500, 5_000)); // target > high reset
     }
 
     function testStrategyCallsOutsideVaultContextRevert() public {
-        FxMintCyvbWbtcFuse_v10 fuse = _deploy(_policy(5_000, 6_000, 5_800, 4_500, 5_000));
-        vm.expectRevert(FxMintCyvbWbtcFuse_v10.WrongVaultContext.selector);
+        FxMintCyvbWbtcFuse_v11 fuse = _deploy(_policy(5_000, 6_000, 5_800, 4_500, 5_000));
+        vm.expectRevert(FxMintCyvbWbtcFuse_v11.WrongVaultContext.selector);
         fuse.deployFreshCapital(0, 0, block.timestamp);
-        vm.expectRevert(FxMintCyvbWbtcFuse_v10.WrongVaultContext.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v11.WrongVaultContext.selector);
         fuse.rebalanceLtv(0, 0, block.timestamp);
         bytes32[] memory params = new bytes32[](1);
         params[0] = bytes32(uint256(1));
-        vm.expectRevert(FxMintCyvbWbtcFuse_v10.WrongVaultContext.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v11.WrongVaultContext.selector);
         fuse.instantWithdraw(params);
     }
 

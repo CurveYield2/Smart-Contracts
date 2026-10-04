@@ -4,8 +4,9 @@ pragma solidity 0.8.30;
 import "forge-std/Script.sol";
 
 import "../contracts/FxMintVbWbtcPriceFeed_v1.sol";
-import "../contracts/FxMintCyvbWbtcFuse_v10.sol";
+import "../contracts/FxMintCyvbWbtcFuse_v11.sol";
 import "../contracts/FxMintCyvbWbtcBalanceFuse_v4.sol";
+import "../contracts/IporBurnRequestFeeFuse_v1.sol";
 
 struct FeePackageCyvbWBTCV1 {
     uint256 managementFee;
@@ -117,6 +118,7 @@ interface ICurveYieldRouterInfoCyvbWBTCV1 {
 
 struct CyvbWbtcComponentsV6 {
     address priceFeed;
+    address burnFuse;
     address strategyFuse;
     address balanceFuse;
 }
@@ -125,8 +127,9 @@ struct CyvbWbtcComponentsV6 {
 /// @notice Deploy and configure CurveYield vbWBTC / cyvbWBTC through the official IPOR Fusion factory on Katana.
 /// @dev v13: no gateway / pre-hooks / config contract. Both user fees are IPOR-native: the 0.55% onboarding fee is
 ///      FeeManager's deposit fee (shares minted to the withdraw manager, burned for holders by the factory-installed
-///      BurnRequestFeeFuse - keeper job), the 0.35% instant fee is WithdrawManager's withdraw fee (burned on exit).
-///      One custom fuse (FxMintCyvbWbtcFuse_v10, LTV policy folded in) + its balance fuse + the f(x) price feed.
+///      BurnRequestFeeFuse - keeper job; the factory-installed copy reads a stale slot, so v13 adds
+///      IporBurnRequestFeeFuse_v1, a port of IPOR's corrected upstream fuse), the 0.60% instant fee is WithdrawManager's withdraw fee (burned on exit).
+///      One custom fuse (FxMintCyvbWbtcFuse_v11, LTV policy folded in) + its balance fuse + the f(x) price feed.
 contract DeployCyvbWBTC_v13 is Script {
     uint256 internal constant KATANA_CHAIN_ID = 747474;
     uint256 internal constant STRATEGY_MARKET_ID = 7; // IporFusionMarkets.ERC20_VAULT_BALANCE
@@ -138,7 +141,7 @@ contract DeployCyvbWBTC_v13 is Script {
     /// @dev Owner: the same owner as the cyavKAT vault (override with FINAL_OWNER)
     address internal constant VAULT_OWNER = 0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35;
     uint256 internal constant ONBOARDING_FEE = 0.0055e18; // FeeManager deposit fee, WAD (0.55%)
-    uint256 internal constant INSTANT_WITHDRAW_FEE = 0.0035e18; // WithdrawManager withdraw fee, WAD (0.35%)
+    uint256 internal constant INSTANT_WITHDRAW_FEE = 0.006e18; // WithdrawManager withdraw fee, WAD (0.60%)
 
     address internal constant VBWBTC = 0x0913DA6Da4b42f538B445599b46Bb4622342Cf52;
     address internal constant VBUSDC = 0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36;
@@ -212,7 +215,7 @@ contract DeployCyvbWBTC_v13 is Script {
 
         _configureRoles(instance, deployer, keeper, finalOwner);
         _configurePrice(instance, components.priceFeed);
-        _configureStrategy(instance, components.strategyFuse, components.balanceFuse);
+        _configureStrategy(instance, components.strategyFuse, components.balanceFuse, components.burnFuse);
         _configureFees(instance);
 
         IPlasmaVaultGovernanceCyvbWBTCV1(instance.plasmaVault).convertToPublicVault();
@@ -240,8 +243,10 @@ contract DeployCyvbWBTC_v13 is Script {
         address nestedCyvbUsdc_
     ) private returns (CyvbWbtcComponentsV6 memory components) {
         components.priceFeed = address(new FxMintVbWbtcPriceFeed_v1(FX_PRICE_ORACLE));
+        // IporFusionMarkets.ZERO_BALANCE_MARKET, as the factory's own burn fuse
+        components.burnFuse = address(new IporBurnRequestFeeFuse_v1(type(uint256).max));
         // default policy: target 50%, high 60% -> 58%, low 45% -> 50% (validated in the fuse constructor)
-        components.strategyFuse = address(new FxMintCyvbWbtcFuse_v10(
+        components.strategyFuse = address(new FxMintCyvbWbtcFuse_v11(
             STRATEGY_MARKET_ID,
             vault_,
             CyvbWbtcLtvPolicy({targetLtvBps: 5_000, highTriggerBps: 6_000, highResetBps: 5_800, lowTriggerBps: 4_500, lowResetBps: 5_000}),
@@ -297,13 +302,15 @@ contract DeployCyvbWBTC_v13 is Script {
     function _configureStrategy(
         FusionInstanceCyvbWBTCV1 memory instance_,
         address strategyFuse_,
-        address balanceFuse_
+        address balanceFuse_,
+        address burnFuse_
     ) private {
         IPlasmaVaultGovernanceCyvbWBTCV1 vault =
             IPlasmaVaultGovernanceCyvbWBTCV1(instance_.plasmaVault);
 
-        address[] memory fuses = new address[](1);
+        address[] memory fuses = new address[](2);
         fuses[0] = strategyFuse_;
+        fuses[1] = burnFuse_;
         vault.addFuses(fuses);
         vault.addBalanceFuse(STRATEGY_MARKET_ID, balanceFuse_);
 
@@ -407,6 +414,7 @@ contract DeployCyvbWBTC_v13 is Script {
 
         address[] memory fuses = vault.getFuses();
         require(_containsAddress(fuses, components_.strategyFuse), "strategy fuse missing");
+        require(_containsAddress(fuses, components_.burnFuse), "burn fuse missing");
         require(
             vault.isBalanceFuseSupported(STRATEGY_MARKET_ID, components_.balanceFuse),
             "balance fuse mismatch"
@@ -444,7 +452,7 @@ contract DeployCyvbWBTC_v13 is Script {
             "performance receiver mismatch"
         );
 
-        FxMintCyvbWbtcFuse_v10 fuse = FxMintCyvbWbtcFuse_v10(components_.strategyFuse);
+        FxMintCyvbWbtcFuse_v11 fuse = FxMintCyvbWbtcFuse_v11(components_.strategyFuse);
         require(fuse.VAULT() == instance_.plasmaVault, "fuse vault mismatch");
         CyvbWbtcLtvPolicy memory policy = fuse.getLtvPolicy();
         require(policy.targetLtvBps == 5000, "target LTV mismatch");
@@ -453,7 +461,7 @@ contract DeployCyvbWBTC_v13 is Script {
         require(policy.lowTriggerBps == 4500, "low trigger mismatch");
         require(policy.lowResetBps == 5000, "low reset mismatch");
 
-        require(FxMintCyvbWbtcFuse_v10(components_.strategyFuse).CYVBUSDC() == nested_, "nested vault fuse mismatch");
+        require(FxMintCyvbWbtcFuse_v11(components_.strategyFuse).CYVBUSDC() == nested_, "nested vault fuse mismatch");
         require(FxMintCyvbWbtcBalanceFuse_v4(components_.balanceFuse).CYVBUSDC() == nested_, "nested balance mismatch");
 
         _verifyRoutes();

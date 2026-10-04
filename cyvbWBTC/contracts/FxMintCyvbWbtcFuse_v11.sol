@@ -96,7 +96,7 @@ interface ICurveYieldRouterCyvbWBTCV9 {
     ) external returns (uint256 netAmountOut);
 }
 
-/// @title FxMintCyvbWbtcFuse_v10
+/// @title FxMintCyvbWbtcFuse_v11
 /// @notice cyvbWBTC strategy fuse:
 ///         vbWBTC -> f(x) collateral -> fxUSD debt -> vbUSDC -> nested cyvbUSDC.
 /// @dev Runs by delegatecall from IPOR PlasmaVault. Position ownership, token balances and approvals
@@ -107,7 +107,12 @@ interface ICurveYieldRouterCyvbWBTCV9 {
 ///      - >= high trigger (default 60%) deleverages to high reset (default 58%),
 ///      - <= low trigger (default 45%) borrows to low reset (default 50%),
 ///      - instant withdrawals never leave the f(x) position above 55%.
-contract FxMintCyvbWbtcFuse_v10 {
+///
+///      v11: the Katana f(x) PoolManager locks after ONE operate() per transaction (transient lock), so every path
+///      does at most one operate(): repay + collateral withdrawal are a single operate(pos, -coll, -debt). A full exit
+///      whose nested stable leg cannot cover debt + repay fee reverts InsufficientNestedStable (the f(x) borrow fee
+///      and entry swap leave the stable leg slightly below the debt): that tail goes through a scheduled withdrawal.
+contract FxMintCyvbWbtcFuse_v11 {
     /// @notice Vault-local fxMINT market (balance: FxMintCyvbWbtcBalanceFuse_v4); depends on 100_001 (cyvbUSDC) and 7.
     uint256 public immutable MARKET_ID;
     /// @notice Instant withdrawals never leave the f(x) position above this LTV.
@@ -342,6 +347,10 @@ contract FxMintCyvbWbtcFuse_v10 {
 
         uint256 requested = params_.length == 0 ? 0 : uint256(params_[0]);
         if (requested == 0) return;
+        // 1% + 100 wei over-delivery: an unwind that repays fxUSD below peg lifts PPS, so PlasmaVault would ask for a
+        // little more in a second pass - and a second operate() in the same transaction reverts (f(x) lock). Fork-tested
+        // up to an 80% redeem (needed ~0.19%). The surplus stays idle in the vault (value-neutral).
+        requested = requested + requested / 100 + 100;
 
         uint256 position = _positionId();
         if (position == 0) return;
@@ -359,8 +368,9 @@ contract FxMintCyvbWbtcFuse_v10 {
 
         if (currentLtv < maxLtv) {
             uint256 safeNet = _safeCollateralOnlyNetWithdrawal(position);
-            if (safeNet != 0) {
-                uint256 netToTake = remaining < safeNet ? remaining : safeNet;
+            // collateral-only only when it covers the whole request (one operate() per transaction)
+            if (safeNet != 0 && requested <= safeNet) {
+                uint256 netToTake = remaining;
                 _withdrawCollateral(position, _grossCollateralForNet(netToTake));
 
                 uint256 producedNow =
@@ -430,11 +440,11 @@ contract FxMintCyvbWbtcFuse_v10 {
         if (rawDebts > maxPostDebt) {
             _requireRoute(VB_USDC, FXUSD);
             _requireRoute(FXUSD, VB_USDC);
-            _repayExact(position_, rawDebts - maxPostDebt, 0, block.timestamp);
+            _repayAndWithdraw(position_, rawDebts - maxPostDebt, -_toInt(grossColl), 0, block.timestamp);
             deleveraged = true;
+        } else {
+            _withdrawCollateral(position_, grossColl);
         }
-
-        _withdrawCollateral(position_, grossColl);
     }
 
     function _supplyCollateralAtTarget(
@@ -529,7 +539,21 @@ contract FxMintCyvbWbtcFuse_v10 {
         uint256 minFxUsdOut_,
         uint256 deadline_
     ) private {
-        if (debtReduction_ == 0) return;
+        _repayAndWithdraw(position_, debtReduction_, 0, minFxUsdOut_, deadline_);
+    }
+
+    /// @dev Repays debtReduction_ and moves collDelta_ collateral (<= 0; type(int256).min = all) in ONE operate().
+    function _repayAndWithdraw(
+        uint256 position_,
+        uint256 debtReduction_,
+        int256 collDelta_,
+        uint256 minFxUsdOut_,
+        uint256 deadline_
+    ) private {
+        if (debtReduction_ == 0) {
+            if (collDelta_ != 0) IFxPoolManagerCyvbWBTCV9(POOL_MANAGER).operate(FX_POOL, position_, collDelta_, 0);
+            return;
+        }
 
         (,,, uint256 repayFeeRatio) = _feeRatios();
         uint256 repayFee = (debtReduction_ * repayFeeRatio) / FEE_PRECISION;
@@ -565,7 +589,7 @@ contract FxMintCyvbWbtcFuse_v10 {
         IFxPoolManagerCyvbWBTCV9(POOL_MANAGER).operate(
             FX_POOL,
             position_,
-            0,
+            collDelta_,
             -_toInt(debtReduction_)
         );
 
@@ -585,17 +609,8 @@ contract FxMintCyvbWbtcFuse_v10 {
 
     function _fullUnwind(uint256 position_) private {
         (, uint256 rawDebts) = IFxLongPoolCyvbWBTCV9(FX_POOL).getPosition(position_);
-        if (rawDebts != 0) {
-            _repayExact(position_, rawDebts, 0, block.timestamp);
-        }
-
-        // type(int256).min is f(x)'s explicit "all collateral" sentinel.
-        IFxPoolManagerCyvbWBTCV9(POOL_MANAGER).operate(
-            FX_POOL,
-            position_,
-            type(int256).min,
-            0
-        );
+        // type(int256).min is f(x)'s explicit "all collateral" sentinel; repay + withdraw-all in one operate()
+        _repayAndWithdraw(position_, rawDebts, type(int256).min, 0, block.timestamp);
 
         uint256 nestedShares = IERC4626FxMintCyvbWBTCV9(CYVBUSDC).balanceOf(address(this));
         if (nestedShares != 0) {

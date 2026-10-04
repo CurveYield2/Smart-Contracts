@@ -6,13 +6,15 @@ Reworked to use official IPOR components wherever the strategy allows:
 
 | Piece | Implementation |
 |---|---|
-| 0.55% onboarding fee | IPOR-native `FeeManager.setDepositFee`; the fee shares are minted to the withdraw manager and burned for holders by the factory-installed `BurnRequestFeeFuse` (keeper job). No gateway. |
-| 0.35% instant-withdraw fee | IPOR-native `WithdrawManager.updateWithdrawFee`; IPOR burns the fee shares on exit. No gateway. |
-| Strategy | `contracts/FxMintCyvbWbtcFuse_v10.sol` — the only custom fuse. LTV policy folded in as validated immutables (a policy change = a new fuse version installed by the fuse manager); the f(x) position id is stored in IPOR's official `FxMintStorageLib` slot. Official `FxMintBorrowFuse` can't be used: it hard-caps the debt ratio at 40% and has no instant-withdraw path. |
+| 0.55% onboarding fee | IPOR-native `FeeManager.setDepositFee`; the fee shares are minted to the withdraw manager and burned for holders by `contracts/IporBurnRequestFeeFuse_v1.sol` (keeper job) - a port of IPOR's corrected upstream fuse, because the Katana factory still installs the pre-IL-6952 fuse that reads a stale withdraw-manager slot. No gateway. |
+| 0.60% instant-withdraw fee | IPOR-native `WithdrawManager.updateWithdrawFee`; IPOR burns the fee shares on exit. No gateway. |
+| Strategy | `contracts/FxMintCyvbWbtcFuse_v11.sol` — the only custom fuse. At most one f(x) `operate()` per transaction (Katana's PoolManager locks after one); 1% instant-withdraw over-delivery; a full exit the nested stable leg can't cover reverts `InsufficientNestedStable` (that tail goes through a scheduled withdrawal). LTV policy folded in as validated immutables (a policy change = a new fuse version installed by the fuse manager); the f(x) position id is stored in IPOR's official `FxMintStorageLib` slot. Official `FxMintBorrowFuse` can't be used: it hard-caps the debt ratio at 40% and has no instant-withdraw path. |
 | Accounting | `contracts/FxMintCyvbWbtcBalanceFuse_v4.sol` (market 7). Official `FxMintBalanceFuse` can't be used: f(x) scales raw collateral to 18 decimals and the official fuse would value 8-decimal vbWBTC 1e10x too high. |
 | vbWBTC price | `contracts/FxMintVbWbtcPriceFeed_v1.sol` (f(x) anchor price; IPOR's Katana middleware has no vbWBTC source). |
 | Deployment | `script/DeployCyvbWBTC_v13.s.sol`. Owner = the cyavKAT vault owner `0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35` (override `FINAL_OWNER`); fee receiver = `0x47623C62f281807D615eeb4A2CEee9d97F9D3C49`. If the deployer is not the owner it renounces every setup role at the end. |
-| Tests | `test/CyvbWbtcFuseV10Test_v1.t.sol` (policy bounds / ordering, vault-context guard, balance fuse valuation). |
+| Tests | `test/CyvbWbtcFuseV11Test_v1.t.sol` (policy bounds / ordering, vault-context guard, balance fuse valuation). |
+
+Fork simulation (2026-10-04, local Katana anvil): routes, both deploys and `_verifyDeployment` pass; onboarding fee 0.55% to the withdraw manager and burned; deploy at 50.00% LTV; instant redeems 2/5/10/40/80% pass (LTV capped at 55%); 100% reverts `InsufficientNestedStable` as designed (~2.5% stable-leg shortfall); `rebalanceLtv` both directions. Note: fxUSD trades ~1.1% below peg on Sushi, which is most of the ~0.67% PPS cost of deploying capital (and returns on unwind).
 
 Removed (superseded): both gateways and pre-hooks, `CyvbWbtcLtvConfig_v3`, fuse v9, balance fuse v3, deploy v12, the simulation script, the probe scripts and probe workflows.
 
