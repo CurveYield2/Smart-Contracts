@@ -1,0 +1,52 @@
+name: cyvbWBTC Verify v2
+
+on:
+  push:
+    paths:
+      - 'cyvbWBTC/**'
+      - '.github/workflows/cyvbWBTC_verify_v2.yml'
+  pull_request:
+    paths:
+      - 'cyvbWBTC/**'
+      - '.github/workflows/cyvbWBTC_verify_v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install forge-std
+        run: forge install foundry-rs/forge-std --no-git
+
+      - name: Configure Foundry
+        shell: bash
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          solc = "0.8.30"
+          src = "cyvbWBTC/contracts"
+          script = "cyvbWBTC/script"
+          test = "cyvbWBTC/test"
+          out = "out"
+          libs = ["lib"]
+          optimizer = true
+          optimizer_runs = 10000000
+          evm_version = "cancun"
+          EOF
+
+      - name: Build full cyvbWBTC tree
+        run: forge build --sizes
+
+      - name: Run full cyvbWBTC test suite
+        run: forge test -vvv
