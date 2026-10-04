@@ -1,34 +1,138 @@
 # cyvbWBTC verification result v2
 
-- Commit tested: 7a76a5abb14902ab0ba28d15874f8a8a9fbab7a4
-- Build exit code: 1
+- Commit tested: 5acaed4c7f98743b6424c25d82fe67a1d660557b
+- Build exit code: 0
 - Focused test exit code: 0
-- Live Katana preflight exit code: 0
+- Live Katana preflight exit code: 1
 - Production CurveYield routes currently installed: 0
 
 ## Build
 ~~~text
-Compiling 39 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.52s
-Error: Compiler run failed:
-Error: Compiler error (/solidity/libsolidity/codegen/LValue.cpp:50): Stack too deep. Try compiling with `--via-ir` (cli) or the equivalent `viaIR: true` (standard JSON) while enabling the optimizer. Otherwise, try removing local variables.
-   --> cyvbWBTC/script/DeployCyvbWBTC_v4.s.sol:275:13:
-    |
-275 |             keeper,
-    |             ^^^^^^
+    │
+502 │         (, uint256 rawDebts) = IFxLongPoolCyvbWBTCV4(FX_POOL).getPosition(position_);
+    │                                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:508:9
+    │
+508 │ ┏         IFxPoolManagerCyvbWBTCV4(POOL_MANAGER).operate(
+509 │ ┃             FX_POOL,
+510 │ ┃             position_,
+511 │ ┃             type(int256).min,
+512 │ ┃             0
+513 │ ┃         );
+    │ ┗━━━━━━━━━┛
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:517:13
+    │
+517 │ ┏             IERC4626FxMintCyvbWBTCV4(CYVBUSDC).redeem(
+518 │ ┃                 nestedShares,
+519 │ ┃                 address(this),
+520 │ ┃                 address(this)
+521 │ ┃             );
+    │ ┗━━━━━━━━━━━━━┛
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:536:9
+    │
+536 │ ┏         IFxPoolManagerCyvbWBTCV4(POOL_MANAGER).operate(
+537 │ ┃             FX_POOL,
+538 │ ┃             position_,
+539 │ ┃             -_toInt(grossAmount_),
+540 │ ┃             0
+541 │ ┃         );
+    │ ┗━━━━━━━━━┛
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:567:16
+    │
+567 │         return (safeGrossToken * (FEE_PRECISION - withdrawFee)) / FEE_PRECISION;
+    │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:549:13
+    │
+549 │             IFxPriceOracleCyvbWBTCV4(IFxLongPoolCyvbWBTCV4(FX_POOL).priceOracle()).getPrice();
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:575:16
+    │
+575 │         return (tokenAmount * (FEE_PRECISION - withdrawFee)) / FEE_PRECISION;
+    │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:589:16
+    │
+589 │         return (collateralUsd * targetBps_) / BPS;
+    │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:587:13
+    │
+587 │             IFxPriceOracleCyvbWBTCV4(IFxLongPoolCyvbWBTCV4(FX_POOL).priceOracle()).getPrice();
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:648:13
+    │
+648 │         if (deadline_ < block.timestamp) revert InvalidDeadline();
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+
+warning[unsafe-typecast]: typecast can truncate values
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:656:22
+    │
+656 │         if (value_ > uint256(type(int256).max)) revert AmountTooLargeForInt256();
+    │                      ━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ├ note: consider disabling this lint if you're certain the cast is safe
+    │       
+    │       // casting to 'uint256' is safe because [explain why]
+    │       // forge-lint: disable-next-line(unsafe-typecast)
+    │       
+    │       
+    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+    ╭▸ cyvbWBTC/contracts/FxMintCyvbWbtcFuse_v4.sol:657:16
+    │
+657 │         return int256(value_);
+    │                ━━━━━━━━━━━━━━
+    │
+    ├ note: consider disabling this lint if you're certain the cast is safe
+    │       
+    │       // casting to 'int256' is safe because [explain why]
+    │       // forge-lint: disable-next-line(unsafe-typecast)
+    │       
+    │       
+    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
 ~~~
 
 ## Tests
 ~~~text
-Compiling 34 files with Solc 0.8.30
-Solc 0.8.30 finished in 1.98s
-Compiler run successful with warnings:
-Warning (2018): Function state mutability can be restricted to pure
-   --> cyvbWBTC/contracts/CyvbWbtcGateway_v1.sol:164:5:
-    |
-164 |     function previewNetDeposit(uint256 grossAssets_) external view returns (uint256 netAssets, uint256 estimatedShares) {
-    |     ^ (Relevant source part starts here and spans across multiple lines).
-
+No files changed, compilation skipped
 
 Ran 6 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v2.t.sol:CyvbWbtcCoreTest_v2
 [PASS] test_configBindsVaultAndRecordsOnePosition() (gas: 146899)
@@ -37,17 +141,9 @@ Ran 6 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v2.t.sol:CyvbWbtcCoreTest_v2
 [PASS] test_gateRejectsDirectVaultUserAndAllowsGateway() (gas: 64401)
 [PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 420373)
 [PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321019)
-Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 1.99ms (1.48ms CPU time)
+Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 1.56ms (1.54ms CPU time)
 
-Ran 5 tests for cyvbWBTC/test/CyvbWbtcCoreTest_v1.t.sol:CyvbWbtcCoreTest_v1
-[PASS] test_configBindsVaultAndRecordsOnePosition() (gas: 146899)
-[PASS] test_configDefaultsAndRelativeRanges() (gas: 114850)
-[PASS] test_gateRejectsDirectVaultUserAndAllowsGateway() (gas: 64401)
-[PASS] test_instantExitFeeReturnsToVaultForRemainingHolders() (gas: 419860)
-[PASS] test_onboardingFeeIsRetainedInVaultAndAccretesPps() (gas: 321032)
-Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 2.05ms (1.90ms CPU time)
-
-Ran 2 test suites in 9.17ms (4.04ms CPU time): 11 tests passed, 0 failed, 0 skipped (11 total tests)
+Ran 1 test suite in 9.79ms (1.56ms CPU time): 6 tests passed, 0 failed, 0 skipped (6 total tests)
 ~~~
 
 ## Live preflight
@@ -64,4 +160,5 @@ vbusdc_vbwbtc_pool=0x744676B3CeD942D78F9b8e9cd22246Db5c32395c
 route_0x1364b238C668A2dec1294174e4798E8c09979f86_to_0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36=0x
 route_0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36_to_0x1364b238C668A2dec1294174e4798E8c09979f86=0x
 route_0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36_to_0x0913DA6Da4b42f538B445599b46Bb4622342Cf52=0x
+grep: cyvbWBTC/script/DeployCyvbWBTC_v4.s.sol: No such file or directory
 ~~~
