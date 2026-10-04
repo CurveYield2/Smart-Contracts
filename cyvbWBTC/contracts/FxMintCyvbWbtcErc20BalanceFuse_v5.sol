@@ -69,7 +69,7 @@ contract FxMintCyvbWbtcErc20BalanceFuse_v5 {
         FX_POOL = fxPool_;
     }
 
-    /// @return Total market-7 balance in USD WAD: residual ERC20 balances plus net f(x) position.
+    /// @return balance Total market-7 balance in USD WAD: residual ERC20 balances plus net f(x) position.
     function balanceOf() external view returns (uint256 balance) {
         bytes32[] memory substrates =
             IPlasmaVaultConfigFxMintErc20BalanceV5(address(this)).getMarketSubstrates(MARKET_ID);
