@@ -70,3 +70,16 @@ deployFreshCapital and completeScheduledWithdrawal snapshot PPS, burn the fee sh
 Performance fee (user, 2026-10-04, option A): the PPS rise from burning onboarding / request fee shares counts as holder income, so IPOR's 10% performance fee applies to it at the next interaction (~0.1% of the burn gain's PPS, never below the pre-burn PPS). Accepted - not treated as a PPS drop.
 
 Deploying capital is chunked: `deployFreshCapital(amount, ...)` burns the chunk's pro-rata share of the fee shares; the keeper deploys in chunks the fee covers (fxUSD/vbUSDC slippage grows with size).
+
+## Accounting v2 — vbWBTC-only NAV (user, 2026-10-04)
+- **NAV counts vbWBTC only**: the f(x) collateral (market 9000, `FxMintCyvbWbtcBalanceFuse_v6`) + idle vbWBTC (the vault
+  itself). The stable side (earn pool, cyvbUSDC, loose vbUSDC/fxUSD) and the fxUSD debt are **not** in share value: they
+  roughly offset, and PPS rises only when surplus stables become new vbWBTC collateral (compounding) or fee shares burn.
+- **Visible on the IPOR dashboard as three ERC20 positions with ~$0 value**: `CyvbWbtcIndicatorToken_v1` x3 —
+  "Earn Pool TVL", "cyvbUSDC TVL", "Stable Debt". `balanceOf(vault)` = the live USD amount (18 decimals, 1 unit = $1):
+  fxBASE previewRedeem of staked + held shares; cyvbUSDC convertToAssets; f(x) rawDebts. Non-transferable. Listed as
+  market-7 substrates under IPOR's official ERC20 balance fuse, priced by a 1-wei feed (the middleware rejects 0):
+  $1M of debt adds 1e-12 USD to NAV.
+- PPS guards use the same basis (idle vbWBTC + collateral).
+- Known gap, by design: right after a deploy the stable side is ~0.7–2.5% below the debt (borrow fee, fxUSD swap);
+  PPS does not show it - the "Stable Debt" vs the two TVL lines does.

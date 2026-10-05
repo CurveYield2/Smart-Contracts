@@ -4,8 +4,8 @@ pragma solidity 0.8.30;
 import "forge-std/Script.sol";
 
 import "../contracts/FxMintVbWbtcPriceFeed_v1.sol";
-import "../contracts/FxMintCyvbWbtcFuse_v12.sol";
-import "../contracts/FxMintCyvbWbtcBalanceFuse_v5.sol";
+import "../contracts/FxMintCyvbWbtcFuse_v13.sol";
+import "../contracts/CyvbWbtcIndicatorToken_v1.sol";
 import "../contracts/IporBurnRequestFeeFuse_v1.sol";
 import "../contracts/IporUpdateWithdrawManagerFuse_v1.sol";
 import "../contracts/CyvbWbtcWithdrawManager_v1.sol";
@@ -63,6 +63,10 @@ interface IAccessManagerCyvbWBTCV1 {
     function grantRole(uint64 roleId_, address account_, uint32 executionDelay_) external;
     function renounceRole(uint64 roleId_, address callerConfirmation_) external;
     function hasRole(uint64 roleId_, address account_) external view returns (bool isMember, uint32 executionDelay);
+}
+
+interface IVaultSubstratesCyvbWBTCV15 {
+    function grantMarketSubstrates(uint256 marketId, bytes32[] calldata substrates) external;
 }
 
 struct FuseActionCyvbWBTCV14 {
@@ -133,23 +137,32 @@ struct CyvbWbtcComponentsV6 {
     address updateWmFuse;
     address withdrawManager;
     address strategyFuse;
-    address balanceFuse;
+    address oneWeiFeed;
+    address collateralIndicator;
+    address earnIndicator;
+    address cyvbUsdcIndicator;
+    address debtIndicator;
 }
 
-/// @title DeployCyvbWBTC_v14
+/// @title DeployCyvbWBTC_v15
 /// @notice Deploy and configure CurveYield vbWBTC / cyvbWBTC through the official IPOR Fusion factory on Katana.
-/// @dev v14 (EARN_POOL_SPEC_v1): borrowed fxUSD split EARN_BPS fxBASE earn pool (staked in its gauge) / rest cyvbUSDC; EARN_BPS = 0 until the gauge is funded
-///      (FxMintCyvbWbtcFuse_v12); scheduled withdrawals through CyvbWbtcWithdrawManager_v1 (installed with
+/// @dev v15 (accounting v2): NAV = vbWBTC only. Market 7 uses IPOR's official ERC20 balance fuse over four
+///      CyvbWbtcIndicatorToken_v1 positions: "fxMINT vbWBTC Collateral" (priced as vbWBTC - the share value) and
+///      "fxUSD Stability Pool TVL", "CurveYield USDC TVL", "fxUSD Debt" (1-wei price: visible on the dashboard, outside share value).
+///      v14 (EARN_POOL_SPEC_v1): borrowed fxUSD split EARN_BPS fxBASE earn pool (staked in its gauge) / rest cyvbUSDC; EARN_BPS = 0 until the gauge is funded
+///      (FxMintCyvbWbtcFuse_v13); scheduled withdrawals through CyvbWbtcWithdrawManager_v1 (installed with
 ///      IporUpdateWithdrawManagerFuse_v1, granted ALPHA): the request starts the fxBASE redeem itself, a permissionless
 ///      finish() releases after the 1 h cooldown. Fees: 0.75% onboarding, 1.00% instant, 0.50% scheduled request.
 ///      v13: no gateway / pre-hooks / config contract. Both user fees are IPOR-native: the 0.55% onboarding fee is
 ///      FeeManager's deposit fee (shares minted to the withdraw manager, burned for holders by the factory-installed
 ///      BurnRequestFeeFuse - keeper job; the factory-installed copy reads a stale slot, so v13 adds
 ///      IporBurnRequestFeeFuse_v1, a port of IPOR's corrected upstream fuse), the 0.60% instant fee is WithdrawManager's withdraw fee (burned on exit).
-///      One custom fuse (FxMintCyvbWbtcFuse_v12, LTV policy folded in) + its balance fuse + the f(x) price feed.
-contract DeployCyvbWBTC_v14 is Script {
+///      One custom fuse (FxMintCyvbWbtcFuse_v13, LTV policy folded in) + its balance fuse + the f(x) price feed.
+contract DeployCyvbWBTC_v15 is Script {
     uint256 internal constant KATANA_CHAIN_ID = 747474;
     uint256 internal constant STRATEGY_MARKET_ID = 7; // IporFusionMarkets.ERC20_VAULT_BALANCE
+    /// @dev IPOR's official ERC20 balance fuse on Katana (market 7)
+    address internal constant ERC20_BALANCE_FUSE = 0xb81C00eb71a3D629E6f7Ba66a26218c418D438b8;
 
     IFusionFactoryCyvbWBTCV1 internal constant FACTORY =
         IFusionFactoryCyvbWBTCV1(0xc29b8D591d6a3f109Ca7ba384F2e00162866D37B);
@@ -199,7 +212,7 @@ contract DeployCyvbWBTC_v14 is Script {
     event CyvbWbtcDeployed(
         address indexed vault,
         address indexed strategyFuse,
-        address indexed balanceFuse,
+        address indexed collateralIndicator,
         address priceFeed,
         address keeper,
         address owner,
@@ -235,8 +248,8 @@ contract DeployCyvbWBTC_v14 is Script {
             _deployComponents(instance.plasmaVault, nestedCyvbUsdc);
 
         _configureRoles(instance, deployer, keeper, finalOwner);
-        _configurePrice(instance, components.priceFeed);
-        _configureStrategy(instance, components.strategyFuse, components.balanceFuse, components.burnFuse);
+        _configurePrice(instance, components);
+        _configureStrategy(instance, components);
         _installWithdrawManager(instance, components);
         _configureFees(instance);
 
@@ -252,7 +265,7 @@ contract DeployCyvbWBTC_v14 is Script {
         emit CyvbWbtcDeployed(
             instance.plasmaVault,
             components.strategyFuse,
-            components.balanceFuse,
+            components.collateralIndicator,
             components.priceFeed,
             keeper,
             finalOwner,
@@ -265,10 +278,27 @@ contract DeployCyvbWBTC_v14 is Script {
         address nestedCyvbUsdc_
     ) private returns (CyvbWbtcComponentsV6 memory components) {
         components.priceFeed = address(new FxMintVbWbtcPriceFeed_v1(FX_PRICE_ORACLE));
+        components.oneWeiFeed = address(new CyvbWbtcOneWeiPriceFeed_v1());
+        components.collateralIndicator = address(new CyvbWbtcIndicatorToken_v1(
+            "fxMINT vbWBTC Collateral", "fxMINT-vbWBTC", CyvbWbtcIndicatorToken_v1.Kind.FX_COLLATERAL,
+            vault_, FX_POOL, FX_POOL_MANAGER, VBWBTC, 8
+        ));
+        components.earnIndicator = address(new CyvbWbtcIndicatorToken_v1(
+            "fxUSD Stability Pool TVL", "fxBASE-TVL", CyvbWbtcIndicatorToken_v1.Kind.EARN_POOL_TVL,
+            vault_, FXBASE, EARN_GAUGE, address(0), 18
+        ));
+        components.cyvbUsdcIndicator = address(new CyvbWbtcIndicatorToken_v1(
+            "CurveYield USDC TVL", "cyvbUSDC-TVL", CyvbWbtcIndicatorToken_v1.Kind.CYVBUSDC_TVL,
+            vault_, nestedCyvbUsdc_, address(0), address(0), 18
+        ));
+        components.debtIndicator = address(new CyvbWbtcIndicatorToken_v1(
+            "fxUSD Debt", "fxUSD-DEBT", CyvbWbtcIndicatorToken_v1.Kind.FXUSD_DEBT,
+            vault_, FX_POOL, address(0), address(0), 18
+        ));
         // IporFusionMarkets.ZERO_BALANCE_MARKET, as the factory's own burn fuse
         components.burnFuse = address(new IporBurnRequestFeeFuse_v1(type(uint256).max));
         // default policy: target 50%, high 60% -> 58%, low 45% -> 50% (validated in the fuse constructor)
-        components.strategyFuse = address(new FxMintCyvbWbtcFuse_v12(
+        components.strategyFuse = address(new FxMintCyvbWbtcFuse_v13(
             STRATEGY_MARKET_ID,
             vault_,
             CyvbWbtcLtvPolicy({
@@ -277,17 +307,9 @@ contract DeployCyvbWBTC_v14 is Script {
             }),
             CyvbWbtcFuseAddresses({
                 poolManager: FX_POOL_MANAGER, fxPool: FX_POOL, fxBase: FXBASE, earnGauge: EARN_GAUGE, fxUsd: FXUSD,
-                vbWbtc: VBWBTC, vbUsdc: VBUSDC, cyvbUsdc: nestedCyvbUsdc_, router: CURVEYIELD_ROUTER
+                vbWbtc: VBWBTC, vbUsdc: VBUSDC, cyvbUsdc: nestedCyvbUsdc_, router: CURVEYIELD_ROUTER,
+                collateralIndicator: components.collateralIndicator, debtIndicator: components.debtIndicator
             })
-        ));
-        components.balanceFuse = address(new FxMintCyvbWbtcBalanceFuse_v5(
-            STRATEGY_MARKET_ID,
-            FX_POOL,
-            FXUSD,
-            VBUSDC,
-            nestedCyvbUsdc_,
-            FXBASE,
-            EARN_GAUGE
         ));
         components.updateWmFuse = address(new IporUpdateWithdrawManagerFuse_v1(type(uint256).max));
         components.withdrawManager =
@@ -318,20 +340,23 @@ contract DeployCyvbWBTC_v14 is Script {
         }
     }
 
-    function _configurePrice(FusionInstanceCyvbWBTCV1 memory instance_, address priceFeed_) private {
-        address[] memory assets = new address[](1);
-        address[] memory sources = new address[](1);
-        assets[0] = VBWBTC;
-        sources[0] = priceFeed_;
+    function _configurePrice(FusionInstanceCyvbWBTCV1 memory instance_, CyvbWbtcComponentsV6 memory c_) private {
+        address[] memory assets = new address[](5);
+        address[] memory sources = new address[](5);
+        (assets[0], sources[0]) = (VBWBTC, c_.priceFeed);
+        (assets[1], sources[1]) = (c_.collateralIndicator, c_.priceFeed); // vbWBTC units at the vbWBTC price
+        (assets[2], sources[2]) = (c_.earnIndicator, c_.oneWeiFeed);
+        (assets[3], sources[3]) = (c_.cyvbUsdcIndicator, c_.oneWeiFeed);
+        (assets[4], sources[4]) = (c_.debtIndicator, c_.oneWeiFeed);
         IPriceManagerCyvbWBTCV1(instance_.priceManager).setAssetsPriceSources(assets, sources);
     }
 
     function _configureStrategy(
         FusionInstanceCyvbWBTCV1 memory instance_,
-        address strategyFuse_,
-        address balanceFuse_,
-        address burnFuse_
+        CyvbWbtcComponentsV6 memory c_
     ) private {
+        address strategyFuse_ = c_.strategyFuse;
+        address burnFuse_ = c_.burnFuse;
         IPlasmaVaultGovernanceCyvbWBTCV1 vault =
             IPlasmaVaultGovernanceCyvbWBTCV1(instance_.plasmaVault);
 
@@ -339,7 +364,13 @@ contract DeployCyvbWBTC_v14 is Script {
         fuses[0] = strategyFuse_;
         fuses[1] = burnFuse_;
         vault.addFuses(fuses);
-        vault.addBalanceFuse(STRATEGY_MARKET_ID, balanceFuse_);
+        vault.addBalanceFuse(STRATEGY_MARKET_ID, ERC20_BALANCE_FUSE);
+        bytes32[] memory subs = new bytes32[](4);
+        subs[0] = bytes32(uint256(uint160(c_.collateralIndicator)));
+        subs[1] = bytes32(uint256(uint160(c_.earnIndicator)));
+        subs[2] = bytes32(uint256(uint160(c_.cyvbUsdcIndicator)));
+        subs[3] = bytes32(uint256(uint160(c_.debtIndicator)));
+        IVaultSubstratesCyvbWBTCV15(instance_.plasmaVault).grantMarketSubstrates(STRATEGY_MARKET_ID, subs);
 
         InstantWithdrawalFuseParamsCyvbWBTCV1[] memory instant =
             new InstantWithdrawalFuseParamsCyvbWBTCV1[](1);
@@ -460,7 +491,7 @@ contract DeployCyvbWBTC_v14 is Script {
         require(_containsAddress(fuses, components_.strategyFuse), "strategy fuse missing");
         require(_containsAddress(fuses, components_.burnFuse), "burn fuse missing");
         require(
-            vault.isBalanceFuseSupported(STRATEGY_MARKET_ID, components_.balanceFuse),
+            vault.isBalanceFuseSupported(STRATEGY_MARKET_ID, ERC20_BALANCE_FUSE),
             "balance fuse mismatch"
         );
 
@@ -493,7 +524,16 @@ contract DeployCyvbWBTC_v14 is Script {
             "performance receiver mismatch"
         );
 
-        FxMintCyvbWbtcFuse_v12 fuse = FxMintCyvbWbtcFuse_v12(components_.strategyFuse);
+        _verifyStrategy(instance_, nested_, components_);
+
+        _verifyRoutes();
+    }
+    function _verifyStrategy(
+        FusionInstanceCyvbWBTCV1 memory instance_,
+        address nested_,
+        CyvbWbtcComponentsV6 memory components_
+    ) private view {
+        FxMintCyvbWbtcFuse_v13 fuse = FxMintCyvbWbtcFuse_v13(components_.strategyFuse);
         require(fuse.VAULT() == instance_.plasmaVault, "fuse vault mismatch");
         CyvbWbtcLtvPolicy memory policy = fuse.getLtvPolicy();
         require(policy.targetLtvBps == 5000, "target LTV mismatch");
@@ -503,11 +543,19 @@ contract DeployCyvbWBTC_v14 is Script {
         require(policy.lowResetBps == 5000, "low reset mismatch");
         require(policy.earnBps == EARN_BPS, "earn split mismatch");
 
-        require(FxMintCyvbWbtcFuse_v12(components_.strategyFuse).CYVBUSDC() == nested_, "nested vault fuse mismatch");
-        require(FxMintCyvbWbtcBalanceFuse_v5(components_.balanceFuse).CYVBUSDC() == nested_, "nested balance mismatch");
-
-        _verifyRoutes();
+        require(FxMintCyvbWbtcFuse_v13(components_.strategyFuse).CYVBUSDC() == nested_, "nested vault fuse mismatch");
+        require(
+            IPriceManagerCyvbWBTCV1(instance_.priceManager).getSourceOfAssetPrice(components_.collateralIndicator)
+                == components_.priceFeed,
+            "collateral indicator price"
+        );
+        require(
+            IPriceManagerCyvbWBTCV1(instance_.priceManager).getSourceOfAssetPrice(components_.debtIndicator)
+                == components_.oneWeiFeed,
+            "debt indicator price"
+        );
     }
+
     function _verifyWithdrawManager(
         FusionInstanceCyvbWBTCV1 memory instance_,
         CyvbWbtcComponentsV6 memory components_

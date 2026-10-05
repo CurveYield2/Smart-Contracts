@@ -1,18 +1,18 @@
 # CurveYield vbWBTC / cyvbWBTC — Katana
 
-## Current implementation (2026-10-04, v14)
+## Current implementation (2026-10-04, v15)
 
 See `EARN_POOL_SPEC_v1.md` for the design. Contracts:
 
 | Contract | Role |
 |---|---|
-| `contracts/FxMintCyvbWbtcFuse_v12.sol` | The strategy fuse. vbWBTC -> f(x) collateral (50% LTV policy, immutable) -> fxUSD split `earnBps` to the fxBASE earn pool (staked in its gauge) / rest -> vbUSDC -> cyvbUSDC. One f(x) `operate()` per tx. PPS guard on deploy (chunked), instant and scheduled exits. |
-| `contracts/FxMintCyvbWbtcBalanceFuse_v5.sol` | Market-7 accounting: f(x) position + cyvbUSDC + earn pool + residuals (the official FxMintBalanceFuse mis-scales 8-decimal collateral). |
+| `contracts/FxMintCyvbWbtcFuse_v13.sol` | The strategy fuse. vbWBTC -> f(x) collateral (50% LTV policy, immutable) -> fxUSD split `earnBps` to the fxBASE earn pool (staked in its gauge) / rest -> vbUSDC -> cyvbUSDC. One f(x) `operate()` per tx. PPS guard on deploy (chunked), instant and scheduled exits. |
+| `contracts/CyvbWbtcIndicatorToken_v1.sol` | Accounting v2: NAV = vbWBTC only. Market 7 = IPOR's official ERC20 balance fuse over four indicator positions: **fxMINT vbWBTC Collateral** (priced as vbWBTC - the share value) and **fxUSD Stability Pool TVL**, **CurveYield USDC TVL**, **fxUSD Debt** (USD units, 1-wei price: visible on the dashboard, outside share value). |
 | `contracts/CyvbWbtcWithdrawManager_v1.sol` | IPOR WithdrawManager semantics + automated scheduled withdrawals (the request starts the fxBASE redeem; a permissionless `finish()` releases). Scheduled withdrawals start **disabled** (earn pool off). |
 | `contracts/IporBurnRequestFeeFuse_v1.sol` | Port of IPOR's corrected burn fuse (the factory-installed one reads a stale slot). |
 | `contracts/IporUpdateWithdrawManagerFuse_v1.sol` | Port of IPOR's maintenance fuse; installs the custom withdraw manager. |
 | `contracts/FxMintVbWbtcPriceFeed_v1.sol` | vbWBTC price from the f(x) oracle. |
-| `script/DeployCyvbWBTC_v14.s.sol` | Official IPOR factory clone + all of the above. Owner = cyavKAT owner `0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35`, fee receiver = fee Safe `0x47623C62f281807D615eeb4A2CEee9d97F9D3C49`. |
+| `script/DeployCyvbWBTC_v15.s.sol` | Official IPOR factory clone + all of the above. Owner = cyavKAT owner `0x11b78837cadC8E894F1c6e13fA9f3A085a75FA35`, fee receiver = fee Safe `0x47623C62f281807D615eeb4A2CEee9d97F9D3C49`. |
 
 Launch settings: **earn split 0%** (the fxBASE gauge has never distributed weETH; the f(x) team has been contacted) and scheduled withdrawals off; fees **0.75% onboarding / 1.00% instant / 0.50% scheduled**. When the gauge is funded: install a fuse version with `earnBps` 6000, `setFuses` on the manager, `setScheduledWithdrawalsEnabled(true)`, and add the weETH reward fuse.
 
@@ -24,6 +24,8 @@ Fork-simulated (local Katana anvil, 2026-10-04):
 - scheduled 50% exit at 0% earn (finish immediately, 99.99% of value) and at 60% earn (1 h fxBASE lock).
 
 The performance fee applies to fee-burn PPS gains (accepted).
+
+Accounting v2 fork run (v15): totalAssets = idle + f(x) collateral exactly; the USD indicators add 0; PPS rises on every deploy chunk (cost lands on the stable side); instant redeems pay exactly 99.0%, scheduled 100% at finish-time PPS. The stable side starts ~1.15% below the fxUSD debt after a deploy and the gap grows as holders exit (2.72% after a 50% exit) - visible as fxUSD Debt vs the TVL lines, closed by yield / compounding.
 
 ---
 

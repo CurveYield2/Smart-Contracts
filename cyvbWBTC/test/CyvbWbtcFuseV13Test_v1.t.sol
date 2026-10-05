@@ -2,8 +2,8 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
-import "../contracts/FxMintCyvbWbtcFuse_v12.sol";
-import "../contracts/FxMintCyvbWbtcBalanceFuse_v5.sol";
+import "../contracts/FxMintCyvbWbtcFuse_v13.sol";
+import "../contracts/CyvbWbtcIndicatorToken_v1.sol";
 
 contract MockTokenCyvbV10 {
     uint8 public decimals;
@@ -81,7 +81,7 @@ contract MockNestedCyvbV10 {
 contract MockCodeCyvbV10 {}
 
 /// @notice Focused checks for the single cyvbWBTC strategy fuse (LTV policy folded in) and its balance fuse.
-contract CyvbWbtcFuseV12Test_v1 is Test {
+contract CyvbWbtcFuseV13Test_v1 is Test {
     MockTokenCyvbV10 internal vbWbtc;
     MockTokenCyvbV10 internal vbUsdc;
     MockTokenCyvbV10 internal fxUsd;
@@ -112,19 +112,19 @@ contract CyvbWbtcFuseV12Test_v1 is Test {
         });
     }
 
-    function _deploy(CyvbWbtcLtvPolicy memory policy_) internal returns (FxMintCyvbWbtcFuse_v12) {
-        return new FxMintCyvbWbtcFuse_v12(
+    function _deploy(CyvbWbtcLtvPolicy memory policy_) internal returns (FxMintCyvbWbtcFuse_v13) {
+        return new FxMintCyvbWbtcFuse_v13(
             7, vault, policy_,
             CyvbWbtcFuseAddresses({
                 poolManager: manager, fxPool: address(pool), fxBase: address(fxBase), earnGauge: address(gauge),
                 fxUsd: address(fxUsd), vbWbtc: address(vbWbtc), vbUsdc: address(vbUsdc), cyvbUsdc: address(nested),
-                router: router
+                router: router, collateralIndicator: address(0), debtIndicator: address(0)
             })
         );
     }
 
     function testDefaultPolicyIsStoredImmutably() public {
-        FxMintCyvbWbtcFuse_v12 fuse = _deploy(_policy(5_000, 6_000, 5_800, 4_500, 5_000));
+        FxMintCyvbWbtcFuse_v13 fuse = _deploy(_policy(5_000, 6_000, 5_800, 4_500, 5_000));
         CyvbWbtcLtvPolicy memory p = fuse.getLtvPolicy();
         assertEq(p.targetLtvBps, 5_000);
         assertEq(p.highTriggerBps, 6_000);
@@ -139,62 +139,81 @@ contract CyvbWbtcFuseV12Test_v1 is Test {
     }
 
     function testPolicyOutOfRangeReverts() public {
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.ValueOutOfRange.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.ValueOutOfRange.selector);
         _deploy(_policy(5_600, 6_000, 5_800, 4_500, 5_000)); // target above 55%
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.ValueOutOfRange.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.ValueOutOfRange.selector);
         _deploy(_policy(5_000, 6_700, 5_800, 4_500, 5_000)); // high trigger above 66%
     }
 
     function testEarnSplitAbove100PercentReverts() public {
         CyvbWbtcLtvPolicy memory p = _policy(5_000, 6_000, 5_800, 4_500, 5_000);
         p.earnBps = 10_001;
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.ValueOutOfRange.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.ValueOutOfRange.selector);
         _deploy(p);
     }
 
     function testPolicyOrderingReverts() public {
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.InvalidOrdering.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.InvalidOrdering.selector);
         _deploy(_policy(5_000, 6_000, 5_800, 4_900, 4_800)); // low trigger >= low reset
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.InvalidOrdering.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.InvalidOrdering.selector);
         _deploy(_policy(5_400, 6_000, 5_300, 4_500, 5_000)); // target > high reset
     }
 
     function testStrategyCallsOutsideVaultContextRevert() public {
-        FxMintCyvbWbtcFuse_v12 fuse = _deploy(_policy(5_000, 6_000, 5_800, 4_500, 5_000));
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.WrongVaultContext.selector);
+        FxMintCyvbWbtcFuse_v13 fuse = _deploy(_policy(5_000, 6_000, 5_800, 4_500, 5_000));
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.WrongVaultContext.selector);
         fuse.deployFreshCapital(0, 0, 0, block.timestamp);
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.WrongVaultContext.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.WrongVaultContext.selector);
         fuse.rebalanceLtv(0, 0, block.timestamp);
         bytes32[] memory params = new bytes32[](1);
         params[0] = bytes32(uint256(1));
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.WrongVaultContext.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.WrongVaultContext.selector);
         fuse.instantWithdraw(params);
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.WrongVaultContext.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.WrongVaultContext.selector);
         fuse.requestEarnRedeem(1);
-        vm.expectRevert(FxMintCyvbWbtcFuse_v12.WrongVaultContext.selector);
+        vm.expectRevert(FxMintCyvbWbtcFuse_v13.WrongVaultContext.selector);
         fuse.completeScheduledWithdrawal(1, block.timestamp);
     }
 
-    function testBalanceFuseValuesNestedAndResidualInUsdWad() public {
-        FxMintCyvbWbtcBalanceFuse_v5 balance = new FxMintCyvbWbtcBalanceFuse_v5(
-            7, address(pool), address(fxUsd), address(vbUsdc), address(nested), address(fxBase), address(gauge)
+    function testIndicatorsShowUsdUnitsAndAreNotTransferable() public {
+        CyvbWbtcIndicatorToken_v1 nestedTvl = new CyvbWbtcIndicatorToken_v1(
+            "CurveYield USDC TVL", "cyvbUSDC-TVL", CyvbWbtcIndicatorToken_v1.Kind.CYVBUSDC_TVL,
+            vault, address(nested), address(0), address(0), 18
         );
-        // no f(x) position in this context: only nested + residual legs count
-        nested.setShares(address(balance), 100e6); // 100 shares x PPS 2 = 200 vbUSDC
-        vbUsdc.mint(address(balance), 5e6); // 5 vbUSDC
-        fxUsd.mint(address(balance), 3e18); // 3 fxUSD
-        assertEq(balance.balanceOf(), 208e18);
-        // earn pool: 50 staked + 50 held (pending redeem) shares -> 100 x (0.8 fxUSD + 0.2 vbUSDC) = 100 USD
-        gauge.setStaked(address(balance), 50e18);
-        fxBase.setShares(address(balance), 50e18);
-        assertEq(balance.balanceOf(), 308e18);
+        nested.setShares(vault, 100e6); // 100 shares x PPS 2 = 200 vbUSDC
+        assertEq(nestedTvl.balanceOf(vault), 200e18);
+        assertEq(nestedTvl.balanceOf(address(this)), 0);
+        assertEq(nestedTvl.decimals(), 18);
+
+        CyvbWbtcIndicatorToken_v1 earnTvl = new CyvbWbtcIndicatorToken_v1(
+            "fxUSD Stability Pool TVL", "fxBASE-TVL", CyvbWbtcIndicatorToken_v1.Kind.EARN_POOL_TVL,
+            vault, address(fxBase), address(gauge), address(0), 18
+        );
+        gauge.setStaked(vault, 50e18);
+        fxBase.setShares(vault, 50e18); // 100 shares x (0.8 fxUSD + 0.2 vbUSDC) = 100 USD
+        assertEq(earnTvl.balanceOf(vault), 100e18);
+
+        vm.expectRevert(CyvbWbtcIndicatorToken_v1.NonTransferable.selector);
+        earnTvl.transfer(address(1), 1);
     }
 
-    function testBalanceFuseRejectsWrongNestedAsset() public {
-        MockNestedCyvbV10 wrong = new MockNestedCyvbV10(address(fxUsd));
-        vm.expectRevert(FxMintCyvbWbtcBalanceFuse_v5.NestedVaultAssetMismatch.selector);
-        new FxMintCyvbWbtcBalanceFuse_v5(
-            7, address(pool), address(fxUsd), address(vbUsdc), address(wrong), address(fxBase), address(gauge)
+    function testOnlyTheVaultRegistersThePosition() public {
+        CyvbWbtcIndicatorToken_v1 debt = new CyvbWbtcIndicatorToken_v1(
+            "fxUSD Debt", "fxUSD-DEBT", CyvbWbtcIndicatorToken_v1.Kind.FXUSD_DEBT,
+            vault, address(pool), address(0), address(0), 18
         );
+        vm.expectRevert(CyvbWbtcIndicatorToken_v1.NotVault.selector);
+        debt.registerPosition(7);
+        vm.prank(vault);
+        debt.registerPosition(7);
+        assertEq(debt.positionId(), 7);
     }
+
+    function testOneWeiFeed() public {
+        CyvbWbtcOneWeiPriceFeed_v1 feed = new CyvbWbtcOneWeiPriceFeed_v1();
+        (, int256 price,,,) = feed.latestRoundData();
+        assertEq(price, 1);
+        assertEq(feed.decimals(), 18);
+    }
+
 }

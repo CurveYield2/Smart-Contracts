@@ -55,6 +55,8 @@ struct CyvbWbtcFuseAddresses {
     address vbUsdc;
     address cyvbUsdc;
     address router;
+    address collateralIndicator; // CyvbWbtcIndicatorToken_v1 (FX_COLLATERAL): told the position id when opened; 0 = none
+    address debtIndicator; // CyvbWbtcIndicatorToken_v1 (FXUSD_DEBT): told the position id when it is opened; 0 = none
 }
 
 /// @dev f(x) fxUSD stability pool (fxBASE): fxUSD / vbUSDC in, shares out; 1 h cooldown for a fee-free redeem.
@@ -66,6 +68,10 @@ interface IFxBasePoolCyvbWBTCV12 {
     function redeemRequests(address account) external view returns (uint128 amount, uint128 unlockAt);
     function previewRedeem(uint256 shares) external view returns (uint256 yieldOut, uint256 stableOut);
     function balanceOf(address account) external view returns (uint256);
+}
+
+interface ICyvbDebtIndicatorV13 {
+    function registerPosition(uint256 positionId) external;
 }
 
 interface IPlasmaVaultBaseGetterCyvbWBTCV12 {
@@ -142,7 +148,7 @@ interface ICurveYieldRouterCyvbWBTCV9 {
     ) external returns (uint256 netAmountOut);
 }
 
-/// @title FxMintCyvbWbtcFuse_v12
+/// @title FxMintCyvbWbtcFuse_v13
 /// @notice cyvbWBTC strategy fuse:
 ///         vbWBTC -> f(x) collateral -> fxUSD debt -> vbUSDC -> nested cyvbUSDC.
 /// @dev Runs by delegatecall from IPOR PlasmaVault. Position ownership, token balances and approvals
@@ -154,6 +160,8 @@ interface ICurveYieldRouterCyvbWBTCV9 {
 ///      - <= low trigger (default 45%) borrows to low reset (default 50%),
 ///      - instant withdrawals never leave the f(x) position above 55%.
 ///
+///      v13 (accounting v2): NAV is vbWBTC only (collateral + idle); PPS guards use that basis; the position id is
+///      registered with the FXUSD_DEBT indicator token.
 ///      v12 (EARN_POOL_SPEC_v1): borrowed fxUSD is split EARN_BPS -> fxBASE earn pool (staked in its gauge, no swap)
 ///      and the rest -> vbUSDC -> cyvbUSDC. The earn pool is never an instant source (1% instant-redeem fee): the
 ///      custom withdraw manager calls requestEarnRedeem (on a scheduled request) and completeScheduledWithdrawal
@@ -162,7 +170,7 @@ interface ICurveYieldRouterCyvbWBTCV9 {
 ///      does at most one operate(): repay + collateral withdrawal are a single operate(pos, -coll, -debt). A full exit
 ///      whose nested stable leg cannot cover debt + repay fee reverts InsufficientNestedStable (the f(x) borrow fee
 ///      and entry swap leave the stable leg slightly below the debt): that tail goes through a scheduled withdrawal.
-contract FxMintCyvbWbtcFuse_v12 {
+contract FxMintCyvbWbtcFuse_v13 {
     /// @notice Vault-local fxMINT market (balance: FxMintCyvbWbtcBalanceFuse_v4); depends on 100_001 (cyvbUSDC) and 7.
     uint256 public immutable MARKET_ID;
     /// @notice Instant withdrawals never leave the f(x) position above this LTV.
@@ -210,6 +218,8 @@ contract FxMintCyvbWbtcFuse_v12 {
     address public immutable VB_USDC;
     address public immutable CYVBUSDC;
     address public immutable ROUTER;
+    address public immutable DEBT_INDICATOR;
+    address public immutable COLLATERAL_INDICATOR;
 
     error InvalidAddress();
     error PpsWouldDrop(uint256 ppsBefore, uint256 ppsAfter);
@@ -303,6 +313,8 @@ contract FxMintCyvbWbtcFuse_v12 {
         VB_USDC = a_.vbUsdc;
         CYVBUSDC = a_.cyvbUsdc;
         ROUTER = a_.router;
+        DEBT_INDICATOR = a_.debtIndicator;
+        COLLATERAL_INDICATOR = a_.collateralIndicator;
     }
 
     /// @notice Deploy all currently idle vbWBTC into f(x), then borrow to configurable target LTV.
@@ -521,6 +533,8 @@ contract FxMintCyvbWbtcFuse_v12 {
 
         if (existing == 0) {
             CyvbWbtcFxPositionStorage.ids().positionIds[FX_POOL] = position;
+            if (DEBT_INDICATOR != address(0)) ICyvbDebtIndicatorV13(DEBT_INDICATOR).registerPosition(position);
+            if (COLLATERAL_INDICATOR != address(0)) ICyvbDebtIndicatorV13(COLLATERAL_INDICATOR).registerPosition(position);
         } else if (position != existing) {
             revert ProtocolTopologyMismatch();
         }
@@ -761,9 +775,10 @@ contract FxMintCyvbWbtcFuse_v12 {
 
     // ---------------------------------------------------------------- PPS guard (deployFreshCapital)
 
-    /// @dev Vault value (USD WAD: idle vbWBTC + strategy net) and share supply, for a before/after PPS check.
+    /// @dev Vault value on the NAV basis (accounting v2: idle vbWBTC + f(x) collateral, USD WAD; the stable side and the
+    ///      debt are outside share value) and share supply, for a before/after PPS check.
     function _ppsSnapshot() private view returns (uint256 value_, uint256 supply_) {
-        value_ = _vbWbtcToUsd(IERC20FxMintCyvbWBTCV9(VBWBTC).balanceOf(address(this))) + _strategyNetUsd();
+        value_ = _vbWbtcToUsd(IERC20FxMintCyvbWBTCV9(VBWBTC).balanceOf(address(this))) + _collateralUsd();
         supply_ = IERC20FxMintCyvbWBTCV9(address(this)).totalSupply();
     }
 
@@ -823,6 +838,16 @@ contract FxMintCyvbWbtcFuse_v12 {
         assembly {
             wm_ := sload(slot)
         }
+    }
+
+    /// @dev f(x) collateral in USD WAD (raw collateral is 18-decimal scaled).
+    function _collateralUsd() private view returns (uint256) {
+        uint256 position = _positionId();
+        if (position == 0) return 0;
+        (uint256 rawColls,) = IFxLongPoolCyvbWBTCV9(FX_POOL).getPosition(position);
+        (uint256 anchorPrice,,) =
+            IFxPriceOracleCyvbWBTCV9(IFxLongPoolCyvbWBTCV9(FX_POOL).priceOracle()).getPrice();
+        return (rawColls * anchorPrice) / WAD;
     }
 
     function _vbWbtcToUsd(uint256 amount_) private view returns (uint256) {

@@ -126,7 +126,7 @@ jobs:
               if [ "$ROUTE" = "0x" ]; then ROUTES_READY=0; fi
             done
 
-            grep -q "STRATEGY_MARKET_ID = 7" cyvbWBTC/script/DeployCyvbWBTC_v14.s.sol || PREFLIGHT_RC=1
+            grep -q "STRATEGY_MARKET_ID = 7" cyvbWBTC/script/DeployCyvbWBTC_v15.s.sol || PREFLIGHT_RC=1
           } >"$PREFLIGHT_LOG" 2>&1
 
           {
