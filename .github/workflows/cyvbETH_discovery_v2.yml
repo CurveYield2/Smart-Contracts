@@ -1,0 +1,36 @@
+name: cyvbETH Discovery v2
+
+on:
+  push:
+    branches:
+      - agent/cyvbeth-vault-stack
+    paths:
+      - ".github/workflows/cyvbETH_discovery_v2.yml"
+      - ".github/scripts/cyvbETH_discovery_v2.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cyvbeth-discovery-v2
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Discover live Katana topology
+        env:
+          DISCOVERY_OUT: ${{ runner.temp }}/cyvbeth-discovery-v2.txt
+        run: python3 .github/scripts/cyvbETH_discovery_v2.py
+      - name: Upload discovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyvbeth-discovery-v2
+          path: ${{ runner.temp }}/cyvbeth-discovery-v2.txt
