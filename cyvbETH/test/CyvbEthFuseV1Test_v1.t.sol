@@ -164,14 +164,46 @@ contract MockMorphoCyvbEthV1 {
 contract MockOfficialMorphoFuseCyvbEthV1 {
     uint256 public immutable MARKET_ID;
     address public immutable MORPHO;
+    address public immutable LOAN_TOKEN;
 
-    constructor(uint256 marketId_, address morpho_) {
+    constructor(uint256 marketId_, address morpho_, address loanToken_) {
         MARKET_ID = marketId_;
         MORPHO = morpho_;
+        LOAN_TOKEN = loanToken_;
     }
+
+    function enter(CyvbEthMorphoDataV1 calldata data_)
+        external
+        view
+        returns (address asset, bytes32 market, uint256 actual)
+    {
+        return (LOAN_TOKEN, data_.morphoMarketId, data_.amount);
+    }
+
+    function exit(CyvbEthMorphoDataV1 calldata data_)
+        external
+        view
+        returns (address asset, bytes32 market, uint256 actual)
+    {
+        return (LOAN_TOKEN, data_.morphoMarketId, data_.amount);
+    }
+
+    function instantWithdraw(bytes32[] calldata) external pure {}
 }
 
 contract MockCodeCyvbEthV1 {}
+
+contract MockVaultHostCyvbEthV1 {
+    function execute(address fuse_, bytes calldata data_) external returns (bytes memory result_) {
+        (bool ok, bytes memory result) = fuse_.delegatecall(data_);
+        if (!ok) {
+            assembly {
+                revert(add(result, 32), mload(result))
+            }
+        }
+        return result;
+    }
+}
 
 /// @notice Focused unit checks for the cyvbETH clone delta: policy parity, ETH topology, Morpho binding and feeds.
 contract CyvbEthFuseV1Test_v1 is Test {
@@ -346,7 +378,7 @@ contract CyvbEthFuseV1Test_v1 is Test {
 
     function testMorphoAllocatorBindsOfficialFuseAndMarket() public {
         MockOfficialMorphoFuseCyvbEthV1 official =
-            new MockOfficialMorphoFuseCyvbEthV1(14, address(morpho));
+            new MockOfficialMorphoFuseCyvbEthV1(14, address(morpho), address(vbEth));
         CyvbEthMorphoAllocatorFuse_v1 allocator = new CyvbEthMorphoAllocatorFuse_v1(
             vault, address(vbEth), address(official), 14, MORPHO_MARKET
         );
@@ -359,9 +391,45 @@ contract CyvbEthFuseV1Test_v1 is Test {
         allocator.deployToMorpho(1 ether);
     }
 
+    function testMorphoAllocatorExecutesSelectedAndAllIdleAmountsThroughVaultContext() public {
+        MockVaultHostCyvbEthV1 host = new MockVaultHostCyvbEthV1();
+        MockOfficialMorphoFuseCyvbEthV1 official =
+            new MockOfficialMorphoFuseCyvbEthV1(14, address(morpho), address(vbEth));
+        CyvbEthMorphoAllocatorFuse_v1 allocator = new CyvbEthMorphoAllocatorFuse_v1(
+            address(host), address(vbEth), address(official), 14, MORPHO_MARKET
+        );
+
+        vbEth.mint(address(host), 5 ether);
+
+        bytes memory suppliedResult = host.execute(
+            address(allocator),
+            abi.encodeCall(CyvbEthMorphoAllocatorFuse_v1.deployToMorpho, (2 ether))
+        );
+        assertEq(abi.decode(suppliedResult, (uint256)), 2 ether);
+
+        bytes memory allIdleResult = host.execute(
+            address(allocator),
+            abi.encodeCall(CyvbEthMorphoAllocatorFuse_v1.deployToMorpho, (0))
+        );
+        assertEq(abi.decode(allIdleResult, (uint256)), 5 ether);
+
+        bytes memory withdrawnResult = host.execute(
+            address(allocator),
+            abi.encodeCall(CyvbEthMorphoAllocatorFuse_v1.withdrawFromMorpho, (1 ether))
+        );
+        assertEq(abi.decode(withdrawnResult, (uint256)), 1 ether);
+
+        bytes32[] memory params = new bytes32[](1);
+        params[0] = bytes32(uint256(1 ether));
+        host.execute(
+            address(allocator),
+            abi.encodeCall(CyvbEthMorphoAllocatorFuse_v1.instantWithdraw, (params))
+        );
+    }
+
     function testMorphoAllocatorRejectsWrongOfficialMarketId() public {
         MockOfficialMorphoFuseCyvbEthV1 official =
-            new MockOfficialMorphoFuseCyvbEthV1(13, address(morpho));
+            new MockOfficialMorphoFuseCyvbEthV1(13, address(morpho), address(vbEth));
         vm.expectRevert(CyvbEthMorphoAllocatorFuse_v1.ProtocolTopologyMismatch.selector);
         new CyvbEthMorphoAllocatorFuse_v1(vault, address(vbEth), address(official), 14, MORPHO_MARKET);
     }

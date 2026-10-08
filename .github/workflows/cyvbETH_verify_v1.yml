@@ -123,3 +123,62 @@ jobs:
           grep -q "MORPHO_IPOR_MARKET_ID = 14" cyvbETH/script/DeployCyvbETH_v1.s.sol
           grep -q "instant.length == 2" cyvbETH/script/DeployCyvbETH_v1.s.sol
           grep -q "morphoAllocatorFuse" cyvbETH/script/DeployCyvbETH_v1.s.sol
+
+
+      - name: Fork-only deployment lifecycle simulation
+        shell: bash
+        run: |
+          set -euo pipefail
+          UPSTREAM="https://rpc.katana.network/"
+          LOCAL="http://127.0.0.1:8545"
+          FACTORY=0xc29b8D591d6a3f109Ca7ba384F2e00162866D37B
+          SAFE=0x47623C62f281807D615eeb4A2CEee9d97F9D3C49
+          ROUTER=0x01F9894f92ea9224fECc8C35482E20a05De13582
+          FXUSD=0x4c03ff0f44A55e7098a09016E02a01d3cdC2FDF9
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          VBETH=0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62
+          WEETH=0x9893989433e7a383Cb313953e4c2365107dc19a7
+          CYVBUSDC=0xDf9CbCB8b57A031e91CAe673a6A5786d85Ce2eC5
+          DEPLOYER=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+          DEPLOYER_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+          nohup anvil --fork-url "$UPSTREAM" --chain-id 747474 --host 127.0.0.1 --port 8545 --silent             >"$RUNNER_TEMP/cyvbeth-anvil.log" 2>&1 &
+          ANVIL_PID=$!
+          trap 'kill "$ANVIL_PID" >/dev/null 2>&1 || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if cast chain-id --rpc-url "$LOCAL" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = "1"
+          test "$(cast chain-id --rpc-url "$LOCAL")" = "747474"
+
+          cast rpc anvil_impersonateAccount "$SAFE" --rpc-url "$LOCAL" >/dev/null
+          cast rpc anvil_setBalance "$SAFE" 0x3635C9ADC5DEA00000 --rpc-url "$LOCAL" >/dev/null
+
+          set_route() {
+            local token_in="$1"
+            local token_out="$2"
+            local path="$3"
+            cast send "$ROUTER" "setRoute(address,address,bytes)"               "$token_in" "$token_out" "$path"               --from "$SAFE" --unlocked --rpc-url "$LOCAL" >/dev/null
+            cast send "$ROUTER" "setRouteFeeBps(address,address,uint16)"               "$token_in" "$token_out" 0               --from "$SAFE" --unlocked --rpc-url "$LOCAL" >/dev/null
+            cast send "$ROUTER" "setRouteTwapGuard(address,address,uint32,uint16)"               "$token_in" "$token_out" 900 200               --from "$SAFE" --unlocked --rpc-url "$LOCAL" >/dev/null
+          }
+
+          set_route "$FXUSD" "$VBUSDC"             0x4c03ff0f44a55e7098a09016e02a01d3cdc2fdf9000064203a662b0bd271a6ed5a60edfbd04bfce608fd36
+          set_route "$VBUSDC" "$FXUSD"             0x203a662b0bd271a6ed5a60edfbd04bfce608fd360000644c03ff0f44a55e7098a09016e02a01d3cdc2fdf9
+          set_route "$VBUSDC" "$VBETH"             0x203a662b0bd271a6ed5a60edfbd04bfce608fd360001f4ee7d8bcfb72bc1880d0cf19822eb0a2e6577ab62
+          set_route "$VBETH" "$WEETH"             0xee7d8bcfb72bc1880d0cf19822eb0a2e6577ab620001f49893989433e7a383cb313953e4c2365107dc19a7
+          set_route "$WEETH" "$VBETH"             0x9893989433e7a383cb313953e4c2365107dc19a70001f4ee7d8bcfb72bc1880d0cf19822eb0a2e6577ab62
+
+          BEFORE="$(cast call "$FACTORY" "getFusionFactoryIndex()(uint256)" --rpc-url "$LOCAL" | awk '{print $1}')"
+
+          PRIVATE_KEY="$DEPLOYER_KEY"           KEEPER="$DEPLOYER"           FINAL_OWNER="$DEPLOYER"           CURVEYIELD_USDC_VAULT="$CYVBUSDC"             forge script cyvbETH/script/DeployCyvbETH_v1.s.sol:DeployCyvbETH_v1               --rpc-url "$LOCAL" --broadcast -vvv | tee "$RUNNER_TEMP/cyvbeth-deployment.log"
+
+          AFTER="$(cast call "$FACTORY" "getFusionFactoryIndex()(uint256)" --rpc-url "$LOCAL" | awk '{print $1}')"
+          test "$AFTER" -eq "$((BEFORE + 1))"
+          grep -q "CyvbEthDeployed" "$RUNNER_TEMP/cyvbeth-deployment.log"
