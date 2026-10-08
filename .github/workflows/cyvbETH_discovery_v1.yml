@@ -77,3 +77,19 @@ jobs:
           echo "morpho_balance_market_id=$(cast call "$MORPHO_BALANCE" 'MARKET_ID()(uint256)' --rpc-url "$RPC")"
           echo "morpho_balance_core=$(cast call "$MORPHO_BALANCE" 'MORPHO()(address)' --rpc-url "$RPC")"
           echo "morpho_market_params=$(cast call "$MORPHO" 'idToMarketParams(bytes32)((address,address,address,address,uint256))' "$MORPHO_MARKET" --rpc-url "$RPC")"
+
+          echo "=== Price feed and Sushi pool verification ==="
+          ETH_USD="0xE94c9f9A1893f23be38A5C0394E46Ac05e8a5f8C"
+          VBETH_WEETH_POOL="0xdfc0ba24be7f93bf1a9401635815ece4cc579282"
+          VBUSDC_VBETH_POOL="0x2A2C512beAA8eB15495726C235472D82EFFB7A6B"
+
+          echo "eth_usd_decimals=$(cast call "$ETH_USD" 'decimals()(uint8)' --rpc-url "$RPC" 2>/dev/null || true)"
+          echo "eth_usd_latest=$(cast call "$ETH_USD" 'latestRoundData()(uint80,int256,uint256,uint256,uint80)' --rpc-url "$RPC" 2>/dev/null || true)"
+
+          for POOL in "$VBETH_WEETH_POOL" "$VBUSDC_VBETH_POOL"; do
+            echo "sushi_pool=$POOL"
+            echo "token0=$(cast call "$POOL" 'token0()(address)' --rpc-url "$RPC")"
+            echo "token1=$(cast call "$POOL" 'token1()(address)' --rpc-url "$RPC")"
+            echo "fee=$(cast call "$POOL" 'fee()(uint24)' --rpc-url "$RPC")"
+            echo "liquidity=$(cast call "$POOL" 'liquidity()(uint128)' --rpc-url "$RPC")"
+          done
