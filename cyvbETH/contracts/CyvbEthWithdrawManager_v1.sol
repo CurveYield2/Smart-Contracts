@@ -65,6 +65,7 @@ contract CyvbEthWithdrawManager_v1 {
     ///         the earn-split fuse version); while off, `requestShares` reverts and exits are instant only.
     bool public scheduledWithdrawalsEnabled;
     address public strategyFuse;
+    address public morphoFuse;
     address public burnFuse;
     uint256 public withdrawWindow;
     uint256 public withdrawFee;
@@ -154,6 +155,14 @@ contract CyvbEthWithdrawManager_v1 {
         // the strategy fuse burns the fee shares held here itself (inside its PPS guard); the burn fuse is the fallback
         // when no strategy fuse is set
         uint256 feeShares = IPlasmaVaultCyvbWmV1(PLASMA_VAULT).balanceOf(address(this));
+        if (morphoFuse != address(0) && needed != 0) {
+            FuseActionCyvbWmV1[] memory morphoActions = new FuseActionCyvbWmV1[](1);
+            morphoActions[0] =
+                FuseActionCyvbWmV1(morphoFuse, abi.encodeWithSignature("withdrawFromMorpho(uint256)", needed));
+            IPlasmaVaultCyvbWmV1(PLASMA_VAULT).execute(morphoActions);
+            needed = _neededVbEth();
+        }
+
         FuseActionCyvbWmV1[] memory actions = new FuseActionCyvbWmV1[](1);
         if (strategyFuse != address(0)) {
             actions[0] = FuseActionCyvbWmV1(
@@ -237,11 +246,13 @@ contract CyvbEthWithdrawManager_v1 {
         emit ConfigUpdated("scheduledEnabled", enabled_ ? 1 : 0);
     }
 
-    /// @notice The strategy fuse (FxMintCyvbEthFuse) and the fee-share burn fuse; both must be vault fuses.
-    function setFuses(address strategyFuse_, address burnFuse_) external onlyAtomist {
+    /// @notice The f(x) strategy, Morpho allocator, and fee-share burn fuse; all must be vault fuses.
+    function setFuses(address strategyFuse_, address morphoFuse_, address burnFuse_) external onlyAtomist {
         strategyFuse = strategyFuse_;
+        morphoFuse = morphoFuse_;
         burnFuse = burnFuse_;
         emit FuseUpdated("strategy", strategyFuse_);
+        emit FuseUpdated("morpho", morphoFuse_);
         emit FuseUpdated("burn", burnFuse_);
     }
 
