@@ -1,0 +1,125 @@
+name: cyvbETH Verify v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cyvbeth-vault-stack-v1
+    paths:
+      - "cyvbETH/**"
+      - ".github/workflows/cyvbETH_verify_v1.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cyvbeth-verify-v1
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout implementation branch
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install forge-std on runner
+        run: forge install foundry-rs/forge-std --no-git
+
+      - name: Configure Foundry
+        shell: bash
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          solc = "0.8.30"
+          src = "cyvbETH/contracts"
+          script = "cyvbETH/script"
+          test = "cyvbETH/test"
+          out = "out"
+          libs = ["lib"]
+          optimizer = true
+          optimizer_runs = 200
+          evm_version = "cancun"
+          EOF
+
+      - name: Compile and focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge build --sizes
+          forge test -vv
+
+      - name: Live Katana dependency preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          RPC="https://rpc.katana.network/"
+          FACTORY=0xc29b8D591d6a3f109Ca7ba384F2e00162866D37B
+          SUSHI_FACTORY=0x203e8740894c8955cB8950759876d7E7E45E04c1
+          VBETH=0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62
+          WEETH=0x9893989433e7a383Cb313953e4c2365107dc19a7
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          FXUSD=0x4c03ff0f44A55e7098a09016E02a01d3cdC2FDF9
+          POOL_MANAGER=0x27b3eE81DF2Dd7356D5ac282e2416991A616f96a
+          FX_POOL=0x6776ce77f47aab00405fd5776c4baadc68c8ce3d
+          FX_ORACLE=0x849b9e3119B7c4E4Dd0DdfaD1E0DFe587158692d
+          ETH_USD=0x7BdBDB772f4a073BadD676A567C6ED82049a8eEE
+          MORPHO=0xD50F2DffFd62f94Ee4AEd9ca05C61d0753268aBc
+          MORPHO_SUPPLY=0xC66c3F5cC5e1550A0Ff960c06D630A2FBB80E19d
+          MORPHO_BALANCE=0x83790D83C23461cd22429276406C4f09DB885A85
+          MORPHO_MARKET=0x2c4f26c76b4de51d3c9260c15a796cd2a35efab17786d0aa78ca2e638b0f8ba8
+          YVVBUSDC=0x80c34BD3A3569E126e7055831036aa7b212cB159
+          MORPHO_ORACLE=0x42C3B6B779B1443F9137a5AFF493Df24e98dCBA2
+          MORPHO_IRM=0x4F708C0ae7deD3d74736594C2109C2E3c065B428
+          MORPHO_LLTV=770000000000000000
+
+          test "$(cast chain-id --rpc-url "$RPC")" = "747474"
+
+          PACKAGES="$(cast call "$FACTORY" "getDaoFeePackages()((uint256,uint256,address)[])" --rpc-url "$RPC")"
+          echo "$PACKAGES" | grep -q "(30, 200,"
+
+          COLLATERAL="$(cast call "$FX_POOL" "collateralToken()(address)" --rpc-url "$RPC")"
+          STABLE="$(cast call "$FX_POOL" "fxUSD()(address)" --rpc-url "$RPC")"
+          MANAGER="$(cast call "$FX_POOL" "poolManager()(address)" --rpc-url "$RPC")"
+          ORACLE="$(cast call "$FX_POOL" "priceOracle()(address)" --rpc-url "$RPC")"
+          test "$(echo "$COLLATERAL" | tr '[:upper:]' '[:lower:]')" = "$(echo "$WEETH" | tr '[:upper:]' '[:lower:]')"
+          test "$(echo "$STABLE" | tr '[:upper:]' '[:lower:]')" = "$(echo "$FXUSD" | tr '[:upper:]' '[:lower:]')"
+          test "$(echo "$MANAGER" | tr '[:upper:]' '[:lower:]')" = "$(echo "$POOL_MANAGER" | tr '[:upper:]' '[:lower:]')"
+          test "$(echo "$ORACLE" | tr '[:upper:]' '[:lower:]')" = "$(echo "$FX_ORACLE" | tr '[:upper:]' '[:lower:]')"
+
+          SUPPLY_MARKET_ID="$(cast call "$MORPHO_SUPPLY" "MARKET_ID()(uint256)" --rpc-url "$RPC" | awk '{print $1}')"
+          SUPPLY_CORE="$(cast call "$MORPHO_SUPPLY" "MORPHO()(address)" --rpc-url "$RPC")"
+          BALANCE_MARKET_ID="$(cast call "$MORPHO_BALANCE" "MARKET_ID()(uint256)" --rpc-url "$RPC" | awk '{print $1}')"
+          test "$SUPPLY_MARKET_ID" = "14"
+          test "$BALANCE_MARKET_ID" = "14"
+          test "$(echo "$SUPPLY_CORE" | tr '[:upper:]' '[:lower:]')" = "$(echo "$MORPHO" | tr '[:upper:]' '[:lower:]')"
+
+          PARAMS="$(cast call "$MORPHO" "idToMarketParams(bytes32)((address,address,address,address,uint256))" "$MORPHO_MARKET" --rpc-url "$RPC")"
+          echo "$PARAMS"
+          echo "$PARAMS" | grep -qi "$VBETH"
+          echo "$PARAMS" | grep -qi "$YVVBUSDC"
+          echo "$PARAMS" | grep -qi "$MORPHO_ORACLE"
+          echo "$PARAMS" | grep -qi "$MORPHO_IRM"
+          echo "$PARAMS" | grep -q "$MORPHO_LLTV"
+
+          FEED_DECIMALS="$(cast call "$ETH_USD" "decimals()(uint8)" --rpc-url "$RPC" | awk '{print $1}')"
+          FEED_ROUND="$(cast call "$ETH_USD" "latestRoundData()(uint80,int256,uint256,uint256,uint80)" --rpc-url "$RPC")"
+          test "$FEED_DECIMALS" = "8"
+          echo "$FEED_ROUND"
+          PRICE="$(echo "$FEED_ROUND" | sed -n '2s/ .*//p')"
+          test "${PRICE:-0}" -gt 0
+
+          POOL_VBUSDC_VBETH="$(cast call "$SUSHI_FACTORY" "getPool(address,address,uint24)(address)" "$VBUSDC" "$VBETH" 500 --rpc-url "$RPC")"
+          POOL_VBETH_WEETH="$(cast call "$SUSHI_FACTORY" "getPool(address,address,uint24)(address)" "$VBETH" "$WEETH" 500 --rpc-url "$RPC")"
+          test "$(echo "$POOL_VBUSDC_VBETH" | tr '[:upper:]' '[:lower:]')" = "0x2a2c512beaa8eb15495726c235472d82effb7a6b"
+          test "$(echo "$POOL_VBETH_WEETH" | tr '[:upper:]' '[:lower:]')" = "0xdfc0ba24be7f93bf1a9401635815ece4cc579282"
+
+          grep -q "MORPHO_IPOR_MARKET_ID = 14" cyvbETH/script/DeployCyvbETH_v1.s.sol
+          grep -q "instant.length == 2" cyvbETH/script/DeployCyvbETH_v1.s.sol
+          grep -q "morphoAllocatorFuse" cyvbETH/script/DeployCyvbETH_v1.s.sol
