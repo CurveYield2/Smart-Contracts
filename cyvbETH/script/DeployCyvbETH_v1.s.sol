@@ -186,7 +186,7 @@ contract DeployCyvbETH_v1 is Script {
     address internal constant FXUSD = 0x4c03ff0f44A55e7098a09016E02a01d3cdC2FDF9;
 
     address internal constant FX_POOL_MANAGER = 0x27b3eE81DF2Dd7356D5ac282e2416991A616f96a;
-    address internal constant FX_POOL = 0x6776ce77f47aab00405fd5776c4baadc68c8ce3d;
+    address internal constant FX_POOL = 0x6776cE77f47aAB00405fD5776c4BaAdc68C8Ce3D;
     address internal constant FXBASE = 0xdE2E0736Ee813C425b0eE1a6e0627233B3B1EeF8;
     address internal constant FX_PRICE_ORACLE = 0x849b9e3119B7c4E4Dd0DdfaD1E0DFe587158692d;
 
