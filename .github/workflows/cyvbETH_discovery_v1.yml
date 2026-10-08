@@ -25,56 +25,11 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
-      - name: Discover live f(x) vbETH pool
+      - name: Discover live cyvbETH dependencies
         shell: bash
         run: |
           set -euo pipefail
           RPC="https://rpc.katana.network/"
-          VBETH="0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62"
-          TOPIC="$(cast keccak 'RegisterPool(address)')"
-          echo "chain_id=$(cast chain-id --rpc-url "$RPC")"
-          echo "latest_block=$(cast block-number --rpc-url "$RPC")"
-          echo "register_pool_topic=$TOPIC"
-
-          for MANAGER in             0xFae375C9eA6636c40deB92DD91B7dbbF51BD3C68             0x27b3eE81DF2Dd7356D5ac282e2416991A616f96a
-          do
-            echo "=== manager=$MANAGER ==="
-            RAW="$RUNNER_TEMP/logs-$MANAGER.json"
-            if cast logs --json --address "$MANAGER" "$TOPIC" --from-block 0 --to-block latest --rpc-url "$RPC" >"$RAW" 2>"$RUNNER_TEMP/logerr"; then
-              :
-            else
-              echo "full-range log query failed:"
-              cat "$RUNNER_TEMP/logerr"
-              exit 2
-            fi
-            COUNT="$(jq 'length' "$RAW")"
-            echo "register_pool_log_count=$COUNT"
-            jq -r '.[].topics[1]' "$RAW" | while read -r T; do
-              POOL="0x${T:26}"
-              echo "--- pool=$POOL ---"
-              COLL="$(cast call "$POOL" 'collateralToken()(address)' --rpc-url "$RPC" 2>/dev/null || true)"
-              STABLE="$(cast call "$POOL" 'fxUSD()(address)' --rpc-url "$RPC" 2>/dev/null || true)"
-              PM="$(cast call "$POOL" 'poolManager()(address)' --rpc-url "$RPC" 2>/dev/null || true)"
-              ORACLE="$(cast call "$POOL" 'priceOracle()(address)' --rpc-url "$RPC" 2>/dev/null || true)"
-              CONFIG="$(cast call "$POOL" 'configuration()(address)' --rpc-url "$RPC" 2>/dev/null || true)"
-              RANGE="$(cast call "$POOL" 'getDebtRatioRange()(uint256,uint256)' --rpc-url "$RPC" 2>/dev/null || true)"
-              echo "collateral=$COLL"
-              echo "fxusd=$STABLE"
-              echo "pool_manager=$PM"
-              echo "oracle=$ORACLE"
-              echo "configuration=$CONFIG"
-              echo "debt_ratio_range=$RANGE"
-              if [ "$(echo "$COLL" | tr '[:upper:]' '[:lower:]')" = "$(echo "$VBETH" | tr '[:upper:]' '[:lower:]')" ]; then
-                echo "CYVBETH_MATCH_POOL=$POOL"
-                echo "CYVBETH_MATCH_MANAGER=$MANAGER"
-                echo "CYVBETH_MATCH_FXUSD=$STABLE"
-                echo "CYVBETH_MATCH_ORACLE=$ORACLE"
-                echo "CYVBETH_MATCH_CONFIGURATION=$CONFIG"
-                echo "CYVBETH_MATCH_DEBT_RANGE=$RANGE"
-              fi
-            done
-
-          echo "=== ETH-side conversion / IPOR Morpho checks ==="
           VBETH="0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62"
           WEETH="0x9893989433e7a383Cb313953e4c2365107dc19a7"
           VBUSDC="0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36"
@@ -84,7 +39,27 @@ jobs:
           MORPHO_SUPPLY="0xC66c3F5cC5e1550A0Ff960c06D630A2FBB80E19d"
           MORPHO_BALANCE="0x83790D83C23461cd22429276406C4f09DB885A85"
           MORPHO_MARKET="0x2c4f26c76b4de51d3c9260c15a796cd2a35efab17786d0aa78ca2e638b0f8ba8"
+          TOPIC="$(cast keccak 'RegisterPool(address)')"
 
+          echo "chain_id=$(cast chain-id --rpc-url "$RPC")"
+          echo "latest_block=$(cast block-number --rpc-url "$RPC")"
+
+          for MANAGER in             0xFae375C9eA6636c40deB92DD91B7dbbF51BD3C68             0x27b3eE81DF2Dd7356D5ac282e2416991A616f96a
+          do
+            echo "=== manager=$MANAGER ==="
+            RAW="$RUNNER_TEMP/logs-$MANAGER.json"
+            cast logs --json --address "$MANAGER" "$TOPIC" --from-block 0 --to-block latest --rpc-url "$RPC" >"$RAW"
+            jq -r '.[].topics[1]' "$RAW" | while read -r T; do
+              POOL="0x${T:26}"
+              COLL="$(cast call "$POOL" 'collateralToken()(address)' --rpc-url "$RPC" 2>/dev/null || true)"
+              STABLE="$(cast call "$POOL" 'fxUSD()(address)' --rpc-url "$RPC" 2>/dev/null || true)"
+              ORACLE="$(cast call "$POOL" 'priceOracle()(address)' --rpc-url "$RPC" 2>/dev/null || true)"
+              RANGE="$(cast call "$POOL" 'getDebtRatioRange()(uint256,uint256)' --rpc-url "$RPC" 2>/dev/null || true)"
+              echo "pool=$POOL collateral=$COLL fxusd=$STABLE oracle=$ORACLE debt_range=$RANGE"
+            done
+          done
+
+          echo "=== ETH-side conversion / IPOR Morpho ==="
           echo "vbeth_symbol=$(cast call "$VBETH" 'symbol()(string)' --rpc-url "$RPC")"
           echo "weeth_symbol=$(cast call "$WEETH" 'symbol()(string)' --rpc-url "$RPC")"
           echo "weeth_rate=$(cast call "$WEETH" 'getRate()(uint256)' --rpc-url "$RPC" 2>/dev/null || true)"
@@ -102,4 +77,3 @@ jobs:
           echo "morpho_balance_market_id=$(cast call "$MORPHO_BALANCE" 'MARKET_ID()(uint256)' --rpc-url "$RPC")"
           echo "morpho_balance_core=$(cast call "$MORPHO_BALANCE" 'MORPHO()(address)' --rpc-url "$RPC")"
           echo "morpho_market_params=$(cast call "$MORPHO" 'idToMarketParams(bytes32)((address,address,address,address,uint256))' "$MORPHO_MARKET" --rpc-url "$RPC")"
-          done
