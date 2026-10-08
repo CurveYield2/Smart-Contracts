@@ -792,8 +792,9 @@ contract FxMintCyvbEthFuse_v1 {
         {
             address wm = _withdrawManager();
             if (wm != address(0)) {
-                uint256 owed = IWithdrawManagerCyvbETHV12(wm).neededVbEth();
-                if (owed > neededVbEth_) neededVbEth_ = owed;
+                // Morpho is configured before this fuse in the scheduled/instant liquidity stack.
+                // Re-read the manager's exact remaining need rather than carrying the pre-Morpho amount forward.
+                neededVbEth_ = IWithdrawManagerCyvbETHV12(wm).neededVbEth();
             }
             if (neededVbEth_ != 0) neededVbEth_ += neededVbEth_ / 300 + 100;
         }
