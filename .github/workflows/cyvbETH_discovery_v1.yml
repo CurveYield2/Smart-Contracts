@@ -73,4 +73,33 @@ jobs:
                 echo "CYVBETH_MATCH_DEBT_RANGE=$RANGE"
               fi
             done
+
+          echo "=== ETH-side conversion / IPOR Morpho checks ==="
+          VBETH="0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62"
+          WEETH="0x9893989433e7a383Cb313953e4c2365107dc19a7"
+          VBUSDC="0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36"
+          ROUTER="0x01F9894f92ea9224fECc8C35482E20a05De13582"
+          WEETH_POOL="0x6776ce77f47aab00405fd5776c4baadc68c8ce3d"
+          MORPHO="0xD50F2DffFd62f94Ee4AEd9ca05C61d0753268aBc"
+          MORPHO_SUPPLY="0xC66c3F5cC5e1550A0Ff960c06D630A2FBB80E19d"
+          MORPHO_BALANCE="0x83790D83C23461cd22429276406C4f09DB885A85"
+          MORPHO_MARKET="0x2c4f26c76b4de51d3c9260c15a796cd2a35efab17786d0aa78ca2e638b0f8ba8"
+
+          echo "vbeth_symbol=$(cast call "$VBETH" 'symbol()(string)' --rpc-url "$RPC")"
+          echo "weeth_symbol=$(cast call "$WEETH" 'symbol()(string)' --rpc-url "$RPC")"
+          echo "weeth_rate=$(cast call "$WEETH" 'getRate()(uint256)' --rpc-url "$RPC" 2>/dev/null || true)"
+          WEETH_ORACLE="$(cast call "$WEETH_POOL" 'priceOracle()(address)' --rpc-url "$RPC")"
+          echo "weeth_oracle=$WEETH_ORACLE"
+          echo "weeth_oracle_price=$(cast call "$WEETH_ORACLE" 'getPrice()(uint256,uint256,uint256)' --rpc-url "$RPC")"
+
+          echo "route_vbeth_weeth=$(cast call "$ROUTER" 'routeFor(address,address)(bytes)' "$VBETH" "$WEETH" --rpc-url "$RPC")"
+          echo "route_weeth_vbeth=$(cast call "$ROUTER" 'routeFor(address,address)(bytes)' "$WEETH" "$VBETH" --rpc-url "$RPC")"
+          echo "route_vbeth_vbusdc=$(cast call "$ROUTER" 'routeFor(address,address)(bytes)' "$VBETH" "$VBUSDC" --rpc-url "$RPC")"
+          echo "route_vbusdc_vbeth=$(cast call "$ROUTER" 'routeFor(address,address)(bytes)' "$VBUSDC" "$VBETH" --rpc-url "$RPC")"
+
+          echo "morpho_supply_market_id=$(cast call "$MORPHO_SUPPLY" 'MARKET_ID()(uint256)' --rpc-url "$RPC")"
+          echo "morpho_supply_core=$(cast call "$MORPHO_SUPPLY" 'MORPHO()(address)' --rpc-url "$RPC")"
+          echo "morpho_balance_market_id=$(cast call "$MORPHO_BALANCE" 'MARKET_ID()(uint256)' --rpc-url "$RPC")"
+          echo "morpho_balance_core=$(cast call "$MORPHO_BALANCE" 'MORPHO()(address)' --rpc-url "$RPC")"
+          echo "morpho_market_params=$(cast call "$MORPHO" 'idToMarketParams(bytes32)((address,address,address,address,uint256))' "$MORPHO_MARKET" --rpc-url "$RPC")"
           done
