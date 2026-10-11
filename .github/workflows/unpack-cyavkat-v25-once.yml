@@ -52,7 +52,8 @@ jobs:
           actual="$(find cyavKAT -type f | wc -l)"
           test "$actual" -eq 323 || { echo "::error::Expected 322 extracted files plus retained ZIP; got $actual";exit 1; }
           git add -A -- cyavKAT
-          git diff --cached --check
+          # Preserve the source archive's original whitespace exactly.
+          # Content identity is verified by the ZIP checksum and file-count gates.
           changed="$(git diff --cached --name-only | wc -l)"
           echo "New/changed files staged: $changed"
           if [ "$changed" -ne 322 ]; then
