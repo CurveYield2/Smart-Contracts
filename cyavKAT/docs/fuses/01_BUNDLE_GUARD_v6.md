@@ -1,0 +1,12 @@
+# Bundle guard fuse — v6
+
+**Source** `upgrade/src/generic/CurveYieldBundleGuardFuse.sol`; **exception E5**: official IPOR pre-hooks only validate before an action, not after it. Deploy to `ZERO_BALANCE_MARKET`, with immutable Morpho singleton. Does not own the vault or call gate contracts.
+
+`enter((uint256[] markets))` snapshots the updated gross-asset valuation and supply at a nesting depth in transient storage. `exit((uint256[] markets,uint256 maxPpsDropBps,int256 minAssetsPerShareDelta,uint256 minIdleAssets,bytes32[] morphoMarkets))` refreshes again and enforces the requested loss/profit, idle, and granted Morpho LTV bounds; an unsuccessful exit reverts the bundle. `ZERO_BALANCE_MARKET` typed substrates set the PPS and LTV ceilings; the fuse also applies hard-coded 10% PPS and 85% LTV maxima. `maxPpsDropBps=0` prohibits a drop except the explicit 1,000 raw-asset rounding allowance. A negative `minAssetsPerShareDelta` allows bounded loss and is restricted by the substrate ceiling; deployment gate should normally keep the PPS ceiling at zero.
+
+`enterTransient()` reads `[marketCount,marketIds...]`; `exitTransient()` reads `[marketCount,marketIds...,maxPpsDropBps,signedMinAssetsPerShareDelta,minIdleAssets,morphoMarketCount,morphoIds...]`. A signed negative delta is a two's-complement 256-bit word. Both outputs are empty. Malformed lengths revert, not silently default.
+
+**Fork acceptance:** demonstrated same-bundle PPS rejection, nested scopes, LTV under/over permitted cap, and market 12→7 refresh. Never use this as a substitute for a post-settlement asset accounting check.
+
+
+**Management-fee adjustment (v14):** The PPS denominator used by the guard and executor is `totalSupply() + convertToShares(getUnrealizedManagementFee())`, evaluated independently at each side of a protected operation. This treats the pending official IPOR management-fee shares as an existing liability even before IPOR mints them, so the actual fee realization does not trip a no-drop check. The underlying assets are never discounted and **maxPpsDropBps remains zero** in no-loss paths. Asset losses, extra (non-fee) minting, and rounding beyond the existing tiny dust limit must still revert. This does not waive onboarding-fee dilution or arbitrary admin share transfers. The fee is read from the factory vault's native interface; no factory contract is changed. Guard events contain fee-adjusted, not raw, share supply.

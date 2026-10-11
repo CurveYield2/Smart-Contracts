@@ -1,0 +1,35 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = []
+solc = "0.8.30"
+evm_version = "prague"
+via_ir = true
+optimizer = true
+optimizer_runs = 1
+bytecode_hash = "none"
+allow_paths = ["../ipor-fusion", "../deployed"]
+remappings = [
+  "contracts/=../ipor-fusion/contracts/",
+  "@openzeppelin/=../ipor-fusion/node_modules/@openzeppelin/",
+  "@morpho-org/morpho-blue/=../ipor-fusion/node_modules/@morpho-org/morpho-blue/",
+  "managers/=../ipor-fusion/contracts/managers/",
+  "interfaces/=../ipor-fusion/contracts/interfaces/",
+  "libraries/=../ipor-fusion/contracts/libraries/",
+  "@uniswap/v3-core/=../ipor-fusion/node_modules/@uniswap/v3-core/",
+  "forge-std/=../ipor-fusion/lib/forge-std/src/",
+]
+fs_permissions = [{ access = "read", path = "./" }, { access = "read-write", path = "./deployments" }]
+
+# IPOR PlasmaVaultMarketsLib is an external library (linked into the vault implementation and into IPOR's UpdateMarketsBalancesFuse):
+# the bundle guard calls it, so it is linked to the live Katana deployment the vault runs (0x6475…cf08, F2). CurveYield contracts
+# compile with the DEFAULT profile and fit EIP-170 without a special build profile (IPOR_FUSE_CONFORMANCE_SPEC §2.4).
+libraries = ["../ipor-fusion/contracts/vaults/lib/PlasmaVaultMarketsLib.sol:PlasmaVaultMarketsLib:0x6475d2c6b2e2Dc3de7F26226D08651F7F85ACf08"]
+
+[rpc_endpoints]
+katana = "${KATANA_RPC_URL}"
+
+[lint]
+lint_on_build = false

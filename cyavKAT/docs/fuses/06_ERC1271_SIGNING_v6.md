@@ -1,0 +1,7 @@
+# ERC-1271 signing fuses — v6
+
+**Existing cyavKAT:** mandatory Quest signing V2 has already installed ERC-1271 wrapper `0x0a9e...b365` above the original IPOR base, keeping original IPOR calls delegated. `K1_QuestSigning` configures `CurveYieldQuestSignerConfigFuse` (version 2) and detaches `CurveYieldSignatureFuse` installer only. The live wrapper **must remain installed**: restoring the original base directly disables `isValidSignature`. See `QUEST_SIGNING_LAYER_v2.md`.
+
+**New vault generic option:** `CurveYieldErc1271InstallFuse` (`enter` install, `exit` restore original) and `CurveYieldErc1271ConfigFuse` (`enter` signer and prefix) are **not** deployed on cyavKAT. They use ZERO_BALANCE typed `BASE_1271` substrates and ERC-7201 signer/prefix storage. The install fuse's transient enter and exit take `[base1271]`. The config fuse's transient enter takes `[signer,enabled(0/1),updatePrefix(0/1),prefixByteLength,prefixWords...]`, where each word stores 32 prefix bytes in big-endian/network order; max 512 bytes. `exit(bytes)` and `exitTransient()` both revert for the config fuse.
+
+**Fork acceptance:** login signature passes with permitted signer/prefix, fails after revocation; original IPOR base functions remain callable through the wrapper; installation fuse removed without disabling signing; emergency restoration explicitly disables ERC-1271; never allow old config fuse to satisfy the V2 version check.

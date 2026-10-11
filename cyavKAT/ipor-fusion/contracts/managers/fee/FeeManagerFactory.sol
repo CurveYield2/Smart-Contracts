@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity 0.8.30;
+
+import {FeeManager, FeeManagerInitData} from "./FeeManager.sol";
+
+/// @notice Struct containing fee configuration for a single recipient
+/// @dev All fee values are stored with 2 decimal precision
+/// @param recipient The address that will receive the fees
+/// @param feeValue Fee percentage allocated to this recipient (10000 = 100%, 100 = 1%)
+struct RecipientFee {
+    address recipient;
+    uint256 feeValue;
+}
+
+/// @notice Configuration parameters for initializing a new fee management system
+/// @dev Used to set up initial fee structure and recipients for a plasma vault
+struct FeeConfig {
+    /// @notice Address of the factory contract deploying the fee manager
+    address feeFactory;
+    /// @notice Base management fee allocated to the IPOR DAO
+    /// @dev Percentage with 2 decimal precision (10000 = 100%, 100 = 1%)
+    uint256 iporDaoManagementFee;
+    /// @notice Base performance fee allocated to the IPOR DAO
+    /// @dev Percentage with 2 decimal precision (10000 = 100%, 100 = 1%)
+    uint256 iporDaoPerformanceFee;
+    /// @notice Address that receives the IPOR DAO's portion of fees
+    /// @dev Must be non-zero address
+    address iporDaoFeeRecipientAddress;
+}
+
+/// @notice Data structure containing deployed fee manager details
+/// @dev Returned after successful deployment of a new fee manager
+struct FeeManagerData {
+    /// @notice Address of the deployed fee manager contract
+    address feeManager;
+    /// @notice Address of the associated plasma vault
+    address plasmaVault;
+    /// @notice Account that collects performance fees before distribution
+    address performanceFeeAccount;
+    /// @notice Account that collects management fees before distribution
+    address managementFeeAccount;
+    /// @notice Total management fee percentage (sum of all recipients including DAO)
+    /// @dev Stored with 2 decimal precision (10000 = 100%, 100 = 1%)
+    uint256 managementFee;
+    /// @notice Total performance fee percentage (sum of all recipients including DAO)
+    /// @dev Stored with 2 decimal precision (10000 = 100%, 100 = 1%)
+    uint256 performanceFee;
+}
+
+/// @title FeeManagerFactory
+/// @notice Factory contract for deploying and initializing FeeManager instances
+/// @dev Creates standardized fee management systems for plasma vaults
+contract FeeManagerFactory {
+    event FeeManagerDeployed(address feeManager, FeeManagerData feeManagerData);
+
+    /// @notice Deploys a new FeeManager contract with the specified configuration
+    /// @dev Creates and initializes a new FeeManager with associated fee accounts
+    /// @param initData_ Initialization parameters for the fee manager
+    /// @return feeManagerData Data structure containing addresses and fee information of the deployed system
+    /// @custom:security No input validation is performed at the factory layer. Fee recipients, percentages,
+    ///                    and other invariants are validated by the FeeManager constructor and downstream governance calls.
+    function deployFeeManager(
+        FeeManagerInitData memory initData_
+    ) external returns (FeeManagerData memory feeManagerData) {
+        FeeManager feeManager = new FeeManager(initData_);
+
+        feeManagerData = FeeManagerData({
+            feeManager: address(feeManager),
+            plasmaVault: feeManager.PLASMA_VAULT(),
+            performanceFeeAccount: feeManager.PERFORMANCE_FEE_ACCOUNT(),
+            managementFeeAccount: feeManager.MANAGEMENT_FEE_ACCOUNT(),
+            managementFee: feeManager.getTotalManagementFee(),
+            performanceFee: feeManager.getTotalPerformanceFee()
+        });
+
+        emit FeeManagerDeployed(address(feeManager), feeManagerData);
+    }
+}

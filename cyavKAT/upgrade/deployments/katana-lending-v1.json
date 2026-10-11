@@ -1,0 +1,9 @@
+{
+  "lendBalanceFuse": "0x0000000000000000000000000000000000000000",
+  "lendMarketId": 41,
+  "lendMorphoMarket": "0xe0e57a9a96ef56292b1400db02b19995147b1f39ff9dc1673b4618beba1cb159",
+  "lendOracle": "0x2926dD048e1571DA8fc26BF6CB15cB9cA8135137",
+  "lendSupplyFuse": "0x1af82A748cd81958f419F7aCD0D12Ec2372BEa98",
+  "wcyavkat": "0x10dF0e197bc1FEF44D1D1a648C2874c9cdC34692",
+  "wrapperFeeSplitter": "0xB53787F6b85E1bE7FEDabCfB6BBcd8bf6b1a8799"
+}
