@@ -54,8 +54,11 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
     function setUp() public {
         vm.warp(1000);
         TokenizedStrategy impl = new TokenizedStrategy(address(0));
-        vm.etch(0x2e234DAe75C793f67A35089C9d99245E1C58470b, address(impl).code);
+        // The test contract's second CREATE deterministically uses Yearn's
+        // fixture implementation address. Consume that nonce before etching.
+        new MockAssetRankedV1();
         asset = new MockAssetRankedV1();
+        vm.etch(0x2e234DAe75C793f67A35089C9d99245E1C58470b, address(impl).code);
         master = new YearnMorphoRankedMaster_v1(address(asset), "Master");
         ITokenizedStrategy(address(master)).setPerformanceFee(0);
         a = _child();
