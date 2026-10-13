@@ -4,7 +4,8 @@ pragma solidity >=0.8.18;
 // Surgical expansion of Yearn's Base4626Compounder single-ERC4626
 // supply/withdraw/convertToAssets design to up to 10 Yearn tokenized child
 // strategies. Uses official Yearn BaseStrategy rather than reimplementing ERC4626.
-import {BaseStrategy, ERC20} from "@tokenized-strategy/BaseStrategy.sol";
+import {BaseStrategy} from "./YearnBaseStrategyKatana_v1.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {TokenizedStrategyLib as TokenizedStrategy} from "@tokenized-strategy/libraries/TokenizedStrategyLib.sol";
 import {ITokenizedStrategy} from "@tokenized-strategy/interfaces/ITokenizedStrategy.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
