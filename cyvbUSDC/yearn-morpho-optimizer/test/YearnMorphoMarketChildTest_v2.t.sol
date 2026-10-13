@@ -228,4 +228,32 @@ contract YearnMorphoMarketChildTest_v2 is Test {
         morpho.simulateBorrow(400 * UNIT);
         assertEq(child.availableWithdrawLimit(address(this)), 600 * UNIT);
     }
+    function testClaimAndCompoundRequiresNonemptyMerklEntries() public {
+        address[] memory users = new address[](0);
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes32[][] memory proofs = new bytes32[][](0);
+        vm.expectRevert(YearnMorphoMarketChild_v2.BadClaim.selector);
+        child.claimAndCompound(users, tokens, amounts, proofs, 0, 0);
+    }
+
+    function testCompoundWithoutClaimMaintainsMorphoPositionAndLeavesKatPending() public {
+        uint256 beforeValue = child.suppliedAssets();
+        usdc.mint(address(child), 11 * UNIT);
+        kat.mint(address(child), 5 * UNIT); // no proof / no safe swap floor
+        child.compoundWithoutClaim();
+        assertApproxEqAbs(child.suppliedAssets(), beforeValue + 11 * UNIT, 2e6);
+        assertEq(usdc.balanceOf(address(child)), 0);
+        assertEq(kat.balanceOf(address(child)), 5 * UNIT, "KAT held until proven claim with minOut");
+        uint256 beforePps = ITokenizedStrategy(address(child)).pricePerShare();
+        ITokenizedStrategy(address(child)).report();
+        assertGt(ITokenizedStrategy(address(child)).pricePerShare(), beforePps);
+    }
+
+    function testOnlyMasterCanCompoundWithoutProofs() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(YearnMorphoMarketChild_v2.WrongCaller.selector);
+        child.compoundWithoutClaim();
+    }
+
 }
