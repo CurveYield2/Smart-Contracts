@@ -1,7 +1,7 @@
 # CurveYield vbUSDC — Yearn V3 ranked Morpho optimizer v2
 
 **Status:** 2026-10-13 **merged into `main`; 25/25 focused tests and a fully seeded Katana-fork deployment simulation PASS**.
-**Not broadcast to live Katana. Not security audited; production deployment still requires review.**
+**Not broadcast to live Katana. Not security audited. A live Merkl proof cannot be verified for a new child before deployment and campaign accrual. Deployment is staged: initially seed privately, then verify a real Merkl claim, then open to public deposits.**
 
 ## Vault identity and actual deployment
 
@@ -15,9 +15,11 @@
 - **Deployment script:** `script/DeployCurveYieldVbUSDCYearn_v2.s.sol`
 
 The script calls **Yearn's real factory `deploy_new_vault`** and attaches one ranked master
-via `add_strategy(master)`, sets unlimited maximum strategy debt and deposit limit,
-and enables Yearn's `auto_allocate`: real user vault deposits allocate through
-the master and onward into the dedicated Morpho markets.
+via `add_strategy(master)`, configures strategy debt, and enables Yearn's
+`auto_allocate`: an authorized initial deposit flows through the master to
+four Morpho markets. The **vault deposit limit starts at exactly the initial
+seed amount** (0 if unseeded), blocking further deposits until the final
+owner deliberately raises the cap after post-deployment checks.
 
 **No IPOR vault or protocol configuration is modified.** The new cyvbUSDC share
 token is NOT the already-issued IPOR cyvbUSDC vault token.
@@ -104,13 +106,25 @@ Required post-transaction governance acceptance:
 1. `FINAL_OWNER` calls `accept_role_manager()` on the new Yearn vault.
 2. `FINAL_OWNER` calls Yearn `acceptManagement()` on master and **each of the
    four children**, completing the two-step handoff.
-3. Set/verify a reliable authorized `STRATEGY_KEEPER`, Merkl proofs and
-   minimum-output guarded KAT→vbUSDC router route. Keeper reward input is still
-   necessary; **no off-chain APR values** influence rankings.
-4. Prior to accepting real deposits, ensure all four child markets are liquid
-   and eligible for Merkl rewards attributable to **each child contract**.
-5. Consider seeding from a safe-controlled account with >=0.4 vbUSDC to
-   ensure even an otherwise unallocated child generates measurable yield.
+3. **This must happen AFTER live deployment:** seed the four child addresses
+   with actual capital (>=0.4 vbUSDC overall, preferably more), then allow
+   sufficient time for the active Morpho/Merkl campaign to recognize the
+   addresses and accrue rewards. Newly generated strategies cannot have a
+   pre-existing genuine claim proof.
+4. Once the Merkl distributor has published claimable rewards, obtain a real
+   proof for at least one eligible child and call `master.optimizeFunds`
+   through an authorized keeper. Observe the actual claim, guarded KAT→vbUSDC
+   swap, Morpho compounding and each child's Yearn report. Other children
+   can report without Merkl claims. No off-chain APR values determine rank.
+5. Investigate failures or campaigns that do not reward new direct Morpho
+   suppliers. **A claimable campaign is not guaranteed merely by supplying**.
+   If no valid claim exists, the current optimizer intentionally rejects
+   zero-proof harvests; this is not a reason to open the vault early.
+6. Only after on-chain reward/market verification and security review,
+   `FINAL_OWNER` explicitly calls the Yearn vault's
+   `set_deposit_limit(newCap)` to open capacity beyond the seeded amount.
+   The initial script **never** sets an unlimited deposit limit.
+7. The new vault remains independent from the existing IPOR cyvbUSDC token.
 
 The script sets deployer's Yearn-vault roles to 0 after granting `FINAL_OWNER`
 all roles and proposing role-manager transfer, unless owner is deployer.
@@ -133,7 +147,7 @@ forge script cyvbUSDC/yearn-morpho-optimizer/script/DeployCurveYieldVbUSDCYearn_
   --rpc-url https://rpc.katana.network/ --broadcast
 ```
 
-Do not execute live until fork-level reward/liquidity and audit approval.
+Before live deployment, verify deployment permissions, factory/market/router code and a sound risk plan. A real Merkl claim is a **post-deployment validation**, not a pre-deployment prerequisite. Keep the vault deposit cap locked to the initial seed until that validation succeeds.
 
 ## Verification evidence
 
