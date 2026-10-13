@@ -179,7 +179,7 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
             ITokenizedStrategy(address(c)).balanceOf(address(master))), 2 * UNIT);
     }
 
-    function testFailsClosedIfAggregateCapitalCannotMeetMinimums() public {
+    function testRejectsInsufficientCapitalForMinimums() public {
         master.setMinimumChildDeposit(600 * UNIT);
         asset.mint(address(this), 1 * UNIT);
         vm.expectRevert(YearnMorphoRankedMaster_v2.InsufficientSeedCapital.selector);
