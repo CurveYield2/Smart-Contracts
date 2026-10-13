@@ -1,0 +1,91 @@
+name: Yearn Morpho optimizer verify v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "cyvbUSDC/yearn-morpho-optimizer/**"
+      - ".github/workflows/yearn_morpho_optimizer_verify_v2.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yearn-morpho-optimizer-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  katana-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Foundry (GitHub runner only)
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Fetch pinned dependencies (GitHub runner only)
+        run: |
+          forge install --no-git foundry-rs/forge-std
+          forge install --no-git yearn/tokenized-strategy
+          forge install --no-git morpho-org/morpho-blue
+          forge install --no-git OpenZeppelin/openzeppelin-contracts@v4.9.6
+      - name: Isolated ephemeral Foundry config
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          src = "cyvbUSDC/yearn-morpho-optimizer/contracts"
+          test = "cyvbUSDC/yearn-morpho-optimizer/test"
+          script = "cyvbUSDC/yearn-morpho-optimizer/script"
+          out = "out"
+          libs = ["lib"]
+          solc = "0.8.30"
+          optimizer = true
+          optimizer_runs = 200
+          evm_version = "cancun"
+          remappings = [
+            "@tokenized-strategy/=lib/tokenized-strategy/src/",
+            "@morpho-blue/=lib/morpho-blue/src/",
+            "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+            "forge-std/=lib/forge-std/src/"
+          ]
+          EOF
+      - name: Compile v2 contracts and deployment script
+        run: forge build --sizes
+      - name: Run isolated optimizer v2 unit tests
+        run: |
+          forge test --match-path "cyvbUSDC/yearn-morpho-optimizer/test/YearnMorphoRankedMasterTest_v2.t.sol" -vv
+          forge test --match-path "cyvbUSDC/yearn-morpho-optimizer/test/YearnMorphoMarketChildTest_v2.t.sol" -vv
+      - name: Inspect live IPOR Morpho market substrates and Yearn deployment contracts
+        shell: bash
+        run: |
+          RPC=https://rpc.katana.network/
+          echo "live 41 (Morpho market substrates):"
+          cast call 0xDf9CbCB8b57A031e91CAe673a6A5786d85Ce2eC5 'getMarketSubstrates(uint256)(bytes32[])' 41 --rpc-url "$RPC"
+          echo "live Morpho core address:"
+          cast call 0x1f657229ec2D261be7dCD63ca82abed334d1f28b 'MORPHO()(address)' --rpc-url "$RPC"
+          echo "Yearn V3.1.0 factory version:"
+          cast call 0x310aC28ACF5E514abDbFF9Ab25e21f1bfe22bcAC 'apiVersion()(string)' --rpc-url "$RPC"
+      - name: Start ephemeral funded Anvil Katana fork (never broadcast to network)
+        shell: bash
+        run: |
+          anvil --fork-url https://rpc.katana.network/ --chain-id 747474 --port 8545 --silent > /tmp/yearn-katana-anvil-v2.log 2>&1 &
+          for i in $(seq 1 60); do
+            if cast chain-id --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          test "$(cast chain-id --rpc-url http://127.0.0.1:8545)" = "747474"
+          cast rpc anvil_setBalance 0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf 0x3635C9ADC5DEA00000 \
+            --rpc-url http://127.0.0.1:8545
+      - name: Verify actual cyavKAT router KAT to vbUSDC route and TWAP guard on Katana fork
+        env:
+          KATANA_RPC_URL: http://127.0.0.1:8545
+        run: |
+          forge test --match-path "cyvbUSDC/yearn-morpho-optimizer/test/YearnMorphoRouterKatanaFork_v2.t.sol" -vvvv
+      - name: Simulate complete real Katana vault and four-child deployment (NEVER broadcast)
+        env:
+          DEPLOYER_FX: "1"
+          INITIAL_SEED_VBUSDC: "0"
+        run: |
+          forge script cyvbUSDC/yearn-morpho-optimizer/script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 \
+            --rpc-url http://127.0.0.1:8545 -vvvv
