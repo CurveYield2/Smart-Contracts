@@ -7,6 +7,7 @@ import {TokenizedStrategy} from "@tokenized-strategy/TokenizedStrategy.sol";
 import {ITokenizedStrategy} from "@tokenized-strategy/interfaces/ITokenizedStrategy.sol";
 import {Id, Market, MarketParams} from "@morpho-blue/interfaces/IMorpho.sol";
 import {MorphoStorageLib} from "@morpho-blue/libraries/periphery/MorphoStorageLib.sol";
+import {MarketParamsLib} from "@morpho-blue/libraries/MarketParamsLib.sol";
 import {YearnMorphoMarketChild_v1} from "../contracts/YearnMorphoMarketChild_v1.sol";
 
 contract MockRewardAssetChildV1 is ERC20 {
@@ -25,8 +26,9 @@ contract MockMorphoDirectMarketV1 {
 
     constructor(address loanToken) {
         token = MockRewardAssetChildV1(loanToken);
-        marketId = Id.wrap(bytes32(uint256(1)));
         params = MarketParams(loanToken,address(0xBEEF),address(0),address(0),0);
+        // Morpho market IDs are keccak256(abi.encode(MarketParams)), never arbitrary.
+        marketId = MarketParamsLib.id(params);
         data.lastUpdate = uint128(block.timestamp);
     }
 
