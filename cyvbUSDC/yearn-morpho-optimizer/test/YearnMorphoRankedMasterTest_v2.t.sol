@@ -173,6 +173,10 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
         master.setMinimumChildDeposit(2 * UNIT);
         c = _child();
         master.addChild(address(c));
+        // New child is seeded automatically from the two existing positions
+        // before any subsequent optimize call or user deposit.
+        assertGe(ITokenizedStrategy(address(c)).convertToAssets(
+            ITokenizedStrategy(address(c)).balanceOf(address(master))), 2 * UNIT);
         asset.mint(address(this), 10 * UNIT);
         ITokenizedStrategy(address(master)).deposit(10 * UNIT, address(this));
         assertGe(ITokenizedStrategy(address(c)).convertToAssets(
@@ -180,10 +184,14 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
     }
 
     function testRejectsInsufficientCapitalForMinimums() public {
+        // Owner is prevented from setting an infeasible minimum: the change
+        // reverts atomically before existing children can become underfunded.
+        vm.expectRevert(abi.encodeWithSelector(
+            YearnMorphoRankedMaster_v2.InsufficientSeedCapital.selector,
+            1200 * UNIT, 1000 * UNIT
+        ));
         master.setMinimumChildDeposit(600 * UNIT);
-        asset.mint(address(this), 1 * UNIT);
-        vm.expectRevert(abi.encodeWithSelector(YearnMorphoRankedMaster_v2.InsufficientSeedCapital.selector, 1200 * UNIT, 1001 * UNIT));
-        ITokenizedStrategy(address(master)).deposit(1 * UNIT, address(this));
+        assertEq(master.minimumChildDeposit(), UNIT / 10);
     }
 
 }
