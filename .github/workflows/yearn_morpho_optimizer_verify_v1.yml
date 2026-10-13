@@ -60,4 +60,4 @@ jobs:
         run: forge build --sizes
 
       - name: Verify master allocation and Yearn PPS test cases
-        run: forge test -vv
+        run: forge test -vvvv
