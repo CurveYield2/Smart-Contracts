@@ -23,6 +23,8 @@ interface IYearnVaultKatanaV2 {
     function set_role(address account, uint256 roles) external;
     function set_auto_allocate(bool enabled) external;
     function set_deposit_limit(uint256 limit) external;
+    function deposit_limit() external view returns (uint256);
+    function maxDeposit(address receiver) external view returns (uint256);
     function add_strategy(address strategy) external;
     function update_max_debt_for_strategy(address strategy, uint256 maxDebt) external;
     function transfer_role_manager(address newRoleManager) external;
@@ -191,7 +193,12 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
         vault.set_role(deployer, ROLE_ALL);
         vault.add_strategy(masterAddress);
         vault.update_max_debt_for_strategy(masterAddress, type(uint256).max);
-        vault.set_deposit_limit(type(uint256).max);
+        // Phase 1: allow ONLY the preapproved initial seed. Fresh strategy
+        // addresses cannot have claimable Merkl campaign rewards yet.
+        // The final owner must explicitly raise this cap AFTER deployment,
+        // yield accrual, a real proof-backed harvest and risk review.
+        vault.set_deposit_limit(seed);
+        require(vault.deposit_limit() == seed, "initial deposit cap mismatch");
         vault.set_auto_allocate(true); // deposit/mint automatically enters master
         if (seed != 0) {
             require(IERC20ApproveV2(VBUSDC).approve(vaultAddress, seed), "seed approve failed");
@@ -205,6 +212,11 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
                 require(childAssets + 2 >= master.minimumChildDeposit(), "child below minimum seed");
             }
         }
+
+        // The vault must stay closed to additional deposits until verified.
+        // If seed == 0 it starts at a 0 limit; if seeded, the cap equals
+        // the initial funding only and cannot accept other users' deposits.
+        require(vault.maxDeposit(owner) == 0, "deposit cap must block more funding");
 
         // Governance handoff: keeper stays independent; the owner receives
         // strategy management after 2-step acceptance. This also makes future
