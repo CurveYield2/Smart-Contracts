@@ -171,8 +171,8 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
         require(master.childCount() == 4, "child registration failed");
         require(master.children(0) == created[0] && master.children(1) == created[1], "rank order not registered");
         require(
-            YearnMorphoMarketChild_v2(created[0]).marketId() == Id.wrap(YVAUSD) &&
-            YearnMorphoMarketChild_v2(created[1]).marketId() == Id.wrap(AVKAT),
+            Id.unwrap(YearnMorphoMarketChild_v2(created[0]).marketId()) == YVAUSD &&
+            Id.unwrap(YearnMorphoMarketChild_v2(created[1]).marketId()) == AVKAT,
             "yvAUSD/avKAT first ranks mismatched"
         );
 
