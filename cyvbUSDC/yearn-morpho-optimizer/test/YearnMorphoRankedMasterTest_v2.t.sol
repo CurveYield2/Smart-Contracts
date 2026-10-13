@@ -26,10 +26,35 @@ contract MockReportedChildV1 is BaseStrategy {
 
     function setNextGain(uint256 gain) external { pendingGain = gain; }
 
+    uint256 public merklClaimCount;
+    uint256 public lastClaimEntries;
+    address public lastClaimUser;
+    address public lastClaimToken;
+    uint256 public lastClaimAmount;
+    bytes32 public lastClaimProofSibling;
+
     function claimAndCompound(
-        address[] calldata, address[] calldata, uint256[] calldata,
-        bytes32[][] calldata, uint256, uint256
+        address[] calldata users, address[] calldata tokens,
+        uint256[] calldata amounts, bytes32[][] calldata proofs,
+        uint256, uint256
     ) external returns (uint256 gain) {
+        require(users.length != 0, "claim must not be empty");
+        require(users.length == tokens.length && users.length == amounts.length &&
+            users.length == proofs.length, "claim array sizes");
+        merklClaimCount++;
+        lastClaimEntries = users.length;
+        lastClaimUser = users[0];
+        lastClaimToken = tokens[0];
+        lastClaimAmount = amounts[0];
+        if (proofs[0].length != 0) lastClaimProofSibling = proofs[0][0];
+        gain = _simulateGain();
+    }
+
+    function compoundWithoutClaim() external {
+        _simulateGain();
+    }
+
+    function _simulateGain() internal returns (uint256 gain) {
         gain = pendingGain;
         pendingGain = 0;
         claimCount++;
@@ -77,12 +102,28 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
         ITokenizedStrategy(address(result)).setKeeper(address(master));
     }
 
+    function _bundle(address target) internal view
+        returns (YearnMorphoRankedMaster_v2.ClaimBundle memory result)
+    {
+        result.child = target;
+        result.users = new address[](1);
+        result.tokens = new address[](1);
+        result.amounts = new uint256[](1);
+        result.proofs = new bytes32[][](1);
+        result.users[0] = target;
+        result.tokens[0] = address(asset);
+        result.amounts[0] = 123;
+        result.proofs[0] = new bytes32[](1);
+        result.proofs[0][0] = bytes32(uint256(0xCAFE));
+        result.minNetAmountOut = 1;
+        result.deadline = block.timestamp + 1 days;
+    }
+
+    // Exactly ONE claim supplied across two children by default. The other
+    // child must nonetheless compound idle funds, report and enter ranking.
     function _claims() internal view returns (YearnMorphoRankedMaster_v2.ClaimBundle[] memory result) {
-        uint256 n = master.childCount();
-        result = new YearnMorphoRankedMaster_v2.ClaimBundle[](n);
-        for (uint256 i; i < n; ++i) {
-            result[i].child = master.children(i);
-        }
+        result = new YearnMorphoRankedMaster_v2.ClaimBundle[](1);
+        result[0] = _bundle(address(a));
     }
 
     function testDefault70_30AndWinnerReallocation() public {
@@ -192,6 +233,76 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
         ));
         master.setMinimumChildDeposit(600 * UNIT);
         assertEq(master.minimumChildDeposit(), UNIT / 10);
+    }
+
+    function testSparseClaimsPassExactProofAndReportEveryChild() public {
+        b.setNextGain(40 * UNIT); // unclaimed native lending return
+        vm.warp(block.timestamp + 1 days);
+        master.optimizeFunds(_claims());
+        assertEq(a.merklClaimCount(), 1, "A received explicit Merkl proof");
+        assertEq(a.lastClaimEntries(), 1);
+        assertEq(a.lastClaimUser(), address(a));
+        assertEq(a.lastClaimToken(), address(asset));
+        assertEq(a.lastClaimAmount(), 123);
+        assertEq(a.lastClaimProofSibling(), bytes32(uint256(0xCAFE)));
+        assertEq(b.merklClaimCount(), 0, "B did not receive Merkl claim");
+        assertEq(a.claimCount(), 1, "A compounded");
+        assertEq(b.claimCount(), 1, "B maintained and reported");
+        assertEq(master.lastRanking(0), address(b), "unclaimed interest is still ranked");
+        assertEq(master.lastMasterReport(address(a)), ITokenizedStrategy(address(a)).lastReport());
+        assertEq(master.lastMasterReport(address(b)), ITokenizedStrategy(address(b)).lastReport());
+    }
+
+    function testEveryChildMayReceiveMerklClaims() public {
+        YearnMorphoRankedMaster_v2.ClaimBundle[] memory bundles =
+            new YearnMorphoRankedMaster_v2.ClaimBundle[](2);
+        // Sparse claims can arrive in any order, not only registration order.
+        bundles[0] = _bundle(address(b));
+        bundles[1] = _bundle(address(a));
+        vm.warp(block.timestamp + 1 days);
+        master.optimizeFunds(bundles);
+        assertEq(a.merklClaimCount(), 1);
+        assertEq(b.merklClaimCount(), 1);
+        assertEq(a.claimCount(), 1);
+        assertEq(b.claimCount(), 1);
+    }
+
+    function testNoMerklBundlesReverts() public {
+        YearnMorphoRankedMaster_v2.ClaimBundle[] memory empty =
+            new YearnMorphoRankedMaster_v2.ClaimBundle[](0);
+        vm.expectRevert(YearnMorphoRankedMaster_v2.MissingMerklClaims.selector);
+        master.optimizeFunds(empty);
+    }
+
+    function testEmptyClaimEntryRejected() public {
+        YearnMorphoRankedMaster_v2.ClaimBundle[] memory bundles =
+            new YearnMorphoRankedMaster_v2.ClaimBundle[](1);
+        bundles[0].child = address(a);
+        vm.expectRevert(YearnMorphoRankedMaster_v2.InvalidMerklBundle.selector);
+        master.optimizeFunds(bundles);
+    }
+
+    function testDuplicateChildClaimsRejected() public {
+        YearnMorphoRankedMaster_v2.ClaimBundle[] memory bundles =
+            new YearnMorphoRankedMaster_v2.ClaimBundle[](2);
+        bundles[0] = _bundle(address(a));
+        bundles[1] = _bundle(address(a));
+        vm.expectRevert(YearnMorphoRankedMaster_v2.InvalidMerklBundle.selector);
+        master.optimizeFunds(bundles);
+    }
+
+    function testUnknownChildClaimsRejected() public {
+        YearnMorphoRankedMaster_v2.ClaimBundle[] memory bundles = _claims();
+        bundles[0].child = address(0xDEAD);
+        vm.expectRevert(YearnMorphoRankedMaster_v2.InvalidMerklBundle.selector);
+        master.optimizeFunds(bundles);
+    }
+
+    function testClaimTupleLengthMismatchRejected() public {
+        YearnMorphoRankedMaster_v2.ClaimBundle[] memory bundles = _claims();
+        bundles[0].tokens = new address[](0);
+        vm.expectRevert(YearnMorphoRankedMaster_v2.InvalidMerklBundle.selector);
+        master.optimizeFunds(bundles);
     }
 
 }
