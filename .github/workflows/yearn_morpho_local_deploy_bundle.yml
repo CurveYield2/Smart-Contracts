@@ -85,9 +85,20 @@ jobs:
           export INITIAL_SEED_VBUSDC=2000000
           forge script script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 --rpc-url "$KATANA_RPC_URL" -vvvv
 
-          For LIVE deployment only after approving an independent security audit,
-          verifying the real Merkl campaign proof flow and confirming owner
-          permissions, run: bash ./deploy_live.sh
+          For controlled LIVE deployment after reviewing the code, funds,
+          security risks and owner permissions, run: bash ./deploy_live.sh
+
+          IMPORTANT: An actual Merkl claim CANNOT be verified for a new child
+          before the child has been deployed, funded, and accumulated eligible
+          campaign rewards. The script creates the vault with its deposit
+          limit locked to the initial seed amount (or 0 if no seed); it does
+          not open public deposits. This is intentional. First deploy and seed
+          four child strategies; wait for Merkl accrual and root publication;
+          gather an authentic Merkl proof for at least one child; call the
+          master optimizer using the proof and verify swap/compound/report.
+          Then, and only after a security review, the FINAL_OWNER can call
+          set_deposit_limit(newCap) on the Yearn vault to open additional
+          deposits. No claim is guaranteed for any campaign or market.
 
           The live script requires an explicit manual confirmation phrase,
           the DEPLOYER_FX secret, KATANA_RPC_URL and FINAL_OWNER.
@@ -99,10 +110,11 @@ jobs:
           symbol cyvbUSDC overlaps an existing, DIFFERENT IPOR vault symbol.
           Do NOT use fork-only addresses to send real money.
 
-          Real Merkl proof redemption is NOT proven for freshly deployed child
-          contracts; current fork tests exercise the real cyavKAT swap router
-          with the Merkl distributor call mocked. Zero profit unlocking carries
-          MEV/flash-deposit risks requiring audit before production funding.
+          Real Merkl proof redemption remains a post-deployment validation:
+          current fork tests exercise the real cyavKAT swap router with the
+          Merkl distributor call mocked. Do not conflate a mock distributor
+          call with proof validity. Zero profit unlocking carries
+          MEV/flash-deposit risks requiring audit before public funding.
           The IPOR vault had empty live substrates, so original three market
           IDs came from its deployment source, not current IPOR allocations.
 
@@ -167,6 +179,7 @@ jobs:
           echo "LIVE deployment: CurveYield vbUSDC (yvAUSD first / avKAT second)"
           echo "Owner: $FINAL_OWNER"
           echo "Initial seed atomic units: ${INITIAL_SEED_VBUSDC:-0}"
+          echo "Public deposits remain capped to the initial seed until post-deployment Merkl validation."
           read -r -p 'Type DEPLOY KATANA to broadcast LIVE transactions: ' CONFIRM
           test "$CONFIRM" = 'DEPLOY KATANA' || { echo Cancelled; exit 1; }
           forge script script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 \
