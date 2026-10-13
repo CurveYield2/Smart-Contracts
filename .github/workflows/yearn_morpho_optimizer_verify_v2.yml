@@ -82,10 +82,30 @@ jobs:
           KATANA_RPC_URL: http://127.0.0.1:8545
         run: |
           forge test --match-path "cyvbUSDC/yearn-morpho-optimizer/test/YearnMorphoRouterKatanaFork_v2.t.sol" -vvvv
-      - name: Simulate complete real Katana vault and four-child deployment (NEVER broadcast)
+      - name: Fund sandbox signer from Morpho's vbUSDC holdings on ephemeral fork only
+        shell: bash
+        run: |
+          set -euo pipefail
+          RPC=http://127.0.0.1:8545
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          MORPHO=0xD50F2DffFd62f94Ee4AEd9ca05C61d0753268aBc
+          SIGNER=0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf
+          SEED=2000000
+          test "$(cast chain-id --rpc-url "$RPC")" = "747474"
+          BALANCE_HEX=$(cast call "$VBUSDC" 'balanceOf(address)' "$MORPHO" --rpc-url "$RPC")
+          BALANCE=$(cast to-dec "$BALANCE_HEX")
+          echo "Fork-only Morpho source holdings: $BALANCE vbUSDC atomic units"
+          test "$BALANCE" -ge "$SEED"
+          cast rpc anvil_setBalance "$MORPHO" 0x3635C9ADC5DEA00000 --rpc-url "$RPC"
+          cast rpc anvil_impersonateAccount "$MORPHO" --rpc-url "$RPC"
+          cast send "$VBUSDC" 'transfer(address,uint256)(bool)' "$SIGNER" "$SEED" \
+            --from "$MORPHO" --unlocked --rpc-url "$RPC"
+          cast rpc anvil_stopImpersonatingAccount "$MORPHO" --rpc-url "$RPC"
+          test "$(cast to-dec "$(cast call "$VBUSDC" 'balanceOf(address)' "$SIGNER" --rpc-url "$RPC")")" -ge "$SEED"
+      - name: Simulate complete real Katana vault, initial 2 vbUSDC deposit and four seeded Morpho children (NEVER broadcast)
         env:
           DEPLOYER_FX: "1"
-          INITIAL_SEED_VBUSDC: "0"
+          INITIAL_SEED_VBUSDC: "2000000"
         run: |
           forge script cyvbUSDC/yearn-morpho-optimizer/script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 \
             --rpc-url http://127.0.0.1:8545 -vvvv
