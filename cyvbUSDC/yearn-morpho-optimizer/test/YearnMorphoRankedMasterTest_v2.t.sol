@@ -3,7 +3,7 @@ pragma solidity >=0.8.18;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {BaseStrategy} from "@tokenized-strategy/BaseStrategy.sol";
+import {BaseStrategy} from "../contracts/YearnBaseStrategyKatana_v1.sol";
 import {TokenizedStrategy} from "@tokenized-strategy/TokenizedStrategy.sol";
 import {ITokenizedStrategy} from "@tokenized-strategy/interfaces/ITokenizedStrategy.sol";
 import {YearnMorphoRankedMaster_v2} from "../contracts/YearnMorphoRankedMaster_v2.sol";
