@@ -24,12 +24,19 @@ token is NOT the already-issued IPOR cyvbUSDC vault token.
 
 ## Four child strategies (direct supply, never MetaMorpho vault)
 
-| Name | Morpho Blue ID |
-| --- | --- |
-| vbUSDC against avKAT | `0xbd48214a2f12e951da20ad0b8fd83b611c693b5bbaa280b68ba4075678f2a138` |
-| vbUSDC against siUSD | `0xf7fc5cc82200ddf8f23188ddbd6727eda2c8bc41863e91fb767bbc6e4f71890e` |
-| vbUSDC against weETH | `0x76e311d4b0e2e6ae88ad9bab18063452a6d39837d7104c430ff62457b91cb2cb` |
-| vbUSDC against yvAUSD | `0xcfac40b9f06194a33d9526f73642f6849b908c2b6d8669ad9d2d4a3e7dcb017a` |
+| Registration rank (initial only) | Name | Morpho Blue ID |
+| --- | --- | --- |
+| **1st** | **vbUSDC against yvAUSD** | `0xcfac40b9f06194a33d9526f73642f6849b908c2b6d8669ad9d2d4a3e7dcb017a` |
+| **2nd** | **vbUSDC against avKAT** | `0xbd48214a2f12e951da20ad0b8fd83b611c693b5bbaa280b68ba4075678f2a138` |
+| 3rd | vbUSDC against siUSD | `0xf7fc5cc82200ddf8f23188ddbd6727eda2c8bc41863e91fb767bbc6e4f71890e` |
+| 4th | vbUSDC against weETH | `0x76e311d4b0e2e6ae88ad9bab18063452a6d39837d7104c430ff62457b91cb2cb` |
+
+**Initial allocation is determined by the child registration order**, not historical
+performance (which has not yet been measured). After first optimization, the
+master re-ranks by realized report-boundary PPS gain; registration order no
+longer determines the winners. For the funded **2 vbUSDC** fork case, nominal
+initial targets after four 0.1 vbUSDC floors are: **yvAUSD 1.22, avKAT 0.58,
+siUSD 0.10, weETH 0.10 vbUSDC** (subject to ERC4626/Morpho rounding).
 
 **Provenance:** first three IDs copied from the repository's
 `cyvbUSDC/script/DeployCyvbUSDC_v4.s.sol`; fourth provided in the user Morpho link.
