@@ -64,10 +64,21 @@ jobs:
           cast call 0x1f657229ec2D261be7dCD63ca82abed334d1f28b 'MORPHO()(address)' --rpc-url "$RPC"
           echo "Yearn V3.1.0 factory version:"
           cast call 0x310aC28ACF5E514abDbFF9Ab25e21f1bfe22bcAC 'apiVersion()(string)' --rpc-url "$RPC"
+      - name: Start ephemeral funded Anvil Katana fork (never broadcast to network)
+        shell: bash
+        run: |
+          anvil --fork-url https://rpc.katana.network/ --chain-id 747474 --port 8545 --silent > /tmp/yearn-katana-anvil-v2.log 2>&1 &
+          for i in $(seq 1 60); do
+            if cast chain-id --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          test "$(cast chain-id --rpc-url http://127.0.0.1:8545)" = "747474"
+          cast rpc anvil_setBalance 0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf 0x3635C9ADC5DEA00000 \
+            --rpc-url http://127.0.0.1:8545
       - name: Simulate complete real Katana vault and four-child deployment (NEVER broadcast)
         env:
           DEPLOYER_FX: "1"
           INITIAL_SEED_VBUSDC: "0"
         run: |
           forge script cyvbUSDC/yearn-morpho-optimizer/script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 \
-            --rpc-url https://rpc.katana.network/ -vvvv
+            --rpc-url http://127.0.0.1:8545 -vvvv
