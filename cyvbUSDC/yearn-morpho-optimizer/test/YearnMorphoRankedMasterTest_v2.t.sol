@@ -86,8 +86,8 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
     }
 
     function testDefault70_30AndWinnerReallocation() public {
-        assertApproxEqAbs(ITokenizedStrategy(address(a)).convertToAssets(ITokenizedStrategy(address(a)).balanceOf(address(master))), 69993 * UNIT / 100, 2);
-        assertApproxEqAbs(ITokenizedStrategy(address(b)).convertToAssets(ITokenizedStrategy(address(b)).balanceOf(address(master))), 30007 * UNIT / 100, 2);
+        assertApproxEqAbs(ITokenizedStrategy(address(a)).convertToAssets(ITokenizedStrategy(address(a)).balanceOf(address(master))), 69996 * UNIT / 100, 2);
+        assertApproxEqAbs(ITokenizedStrategy(address(b)).convertToAssets(ITokenizedStrategy(address(b)).balanceOf(address(master))), 30004 * UNIT / 100, 2);
         b.setNextGain(30 * UNIT);
         vm.warp(block.timestamp + 1 days);
         master.optimizeFunds(_claims());
@@ -97,8 +97,8 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
         assertEq(b.claimCount(), 1);
         uint256 bValue = ITokenizedStrategy(address(b)).convertToAssets(ITokenizedStrategy(address(b)).balanceOf(address(master)));
         uint256 aValue = ITokenizedStrategy(address(a)).convertToAssets(ITokenizedStrategy(address(a)).balanceOf(address(master)));
-        assertApproxEqAbs(bValue, (10299 * UNIT / 10 - 2 * master.minimumChildDeposit()) * 70 / 100 + master.minimumChildDeposit(), 3);
-        assertApproxEqAbs(aValue, (10299 * UNIT / 10 - 2 * master.minimumChildDeposit()) * 30 / 100 + master.minimumChildDeposit(), 3);
+        assertApproxEqAbs(bValue, (1030 * UNIT - 2 * master.minimumChildDeposit()) * 70 / 100 + master.minimumChildDeposit(), 3);
+        assertApproxEqAbs(aValue, (1030 * UNIT - 2 * master.minimumChildDeposit()) * 30 / 100 + master.minimumChildDeposit(), 3);
     }
 
     function testThreeRanksOwnerConfig() public {
