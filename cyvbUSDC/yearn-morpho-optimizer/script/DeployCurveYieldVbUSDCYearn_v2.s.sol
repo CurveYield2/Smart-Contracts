@@ -104,7 +104,13 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
             "wrong Yearn V3 factory release"
         );
 
-        ids = [AVKAT, SIUSD, WEETH, YVAUSD];
+        // The registration order defines the initial pre-harvest ranking.
+        // yvAUSD gets the first ranked weight (70%), avKAT the second (30%),
+        // both AFTER reserving the 0.1 vbUSDC floor in each of four children.
+        ids = [YVAUSD, AVKAT, SIUSD, WEETH];
+        // IPOR's original three substrates are separate from registration
+        // order; yvAUSD was explicitly added as the fourth market.
+        bytes32[3] memory originalIporMarkets = [AVKAT, SIUSD, WEETH];
         bytes32[] memory ipor = IIPORMorphoSubstratesV2(IPOR_VAULT).getMarketSubstrates(IPOR_MORPHO_MARKET);
         // The live IPOR vault currently returns zero Morpho substrates for
         // market 41 (verified 2026-10-13). Source the original three immutable
@@ -116,7 +122,7 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
             for (uint256 i; i < 3; ++i) {
                 uint256 matches;
                 for (uint256 j; j < 3; ++j) {
-                    if (ids[i] == ipor[j]) matches++;
+                    if (originalIporMarkets[i] == ipor[j]) matches++;
                 }
                 require(matches == 1, "IPOR Morpho market mismatch");
             }
@@ -163,6 +169,12 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
             master.addChild(created[i]);
         }
         require(master.childCount() == 4, "child registration failed");
+        require(master.children(0) == created[0] && master.children(1) == created[1], "rank order not registered");
+        require(
+            YearnMorphoMarketChild_v2(created[0]).marketId() == Id.wrap(YVAUSD) &&
+            YearnMorphoMarketChild_v2(created[1]).marketId() == Id.wrap(AVKAT),
+            "yvAUSD/avKAT first ranks mismatched"
+        );
 
         // Yearn vault factory takes role_manager = caller, allowing initial
         // permission setup before future transfer to multisig owner.
@@ -212,10 +224,10 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
         internal returns (address childAddress)
     {
         string memory name;
-        if (index == 0) name = "CurveYield vbUSDC - avKAT Morpho";
-        else if (index == 1) name = "CurveYield vbUSDC - siUSD Morpho";
-        else if (index == 2) name = "CurveYield vbUSDC - weETH Morpho";
-        else name = "CurveYield vbUSDC - yvAUSD Morpho";
+        if (index == 0) name = "CurveYield vbUSDC - yvAUSD Morpho";
+        else if (index == 1) name = "CurveYield vbUSDC - avKAT Morpho";
+        else if (index == 2) name = "CurveYield vbUSDC - siUSD Morpho";
+        else name = "CurveYield vbUSDC - weETH Morpho";
 
         YearnMorphoMarketChild_v2 child = new YearnMorphoMarketChild_v2(
             VBUSDC, name, morpho, Id.wrap(id), master,
