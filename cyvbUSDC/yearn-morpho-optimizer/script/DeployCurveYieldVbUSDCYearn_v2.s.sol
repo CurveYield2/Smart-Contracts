@@ -184,6 +184,14 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
         if (seed != 0) {
             require(IERC20ApproveV2(VBUSDC).approve(vaultAddress, seed), "seed approve failed");
             vault.deposit(seed, owner); // actual first deposit establishes all four PPS positions
+            require(ITokenizedStrategy(masterAddress).balanceOf(vaultAddress) != 0, "master not funded");
+            for (uint256 i; i < 4; ++i) {
+                uint256 ownedShares = ITokenizedStrategy(created[i]).balanceOf(masterAddress);
+                require(ownedShares != 0, "child missing seeded shares");
+                uint256 childAssets = ITokenizedStrategy(created[i]).convertToAssets(ownedShares);
+                // Tolerate up to two base units of ERC4626 virtual share rounding.
+                require(childAssets + 2 >= master.minimumChildDeposit(), "child below minimum seed");
+            }
         }
 
         // Governance handoff: keeper stays independent; the owner receives
