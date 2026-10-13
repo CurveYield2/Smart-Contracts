@@ -100,6 +100,11 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
     function testThreeRanksOwnerConfig() public {
         c = _child();
         master.addChild(address(c));
+        // Probe funding is required to establish a PPS track record in
+        // an otherwise unallocated third strategy.
+        master.setProbeBps(50);
+        asset.mint(address(this), 100 * UNIT);
+        master.deposit(100 * UNIT, address(this));
         uint16[] memory weights = new uint16[](3);
         weights[0] = 6000;
         weights[1] = 3000;
@@ -117,7 +122,7 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
             MockReportedChildV1 child = MockReportedChildV1(master.children(i));
             sum += child.convertToAssets(child.balanceOf(address(master)));
         }
-        assertApproxEqAbs(sum, 1015 * UNIT, 4);
+        assertApproxEqAbs(sum, 1115 * UNIT, 4);
     }
 
     function testOneHundredPercentSingleWinnerAndRemoveSecond() public {
