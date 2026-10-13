@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {BaseStrategy} from "@tokenized-strategy/BaseStrategy.sol";
 import {TokenizedStrategy} from "@tokenized-strategy/TokenizedStrategy.sol";
+import {ITokenizedStrategy} from "@tokenized-strategy/interfaces/ITokenizedStrategy.sol";
 import {YearnMorphoRankedMaster_v1} from "../contracts/YearnMorphoRankedMaster_v1.sol";
 
 contract MockAssetRankedV1 is ERC20 {
@@ -56,21 +57,21 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
         vm.etch(0x2e234DAe75C793f67A35089C9d99245E1C58470b, address(impl).code);
         asset = new MockAssetRankedV1();
         master = new YearnMorphoRankedMaster_v1(address(asset), "Master");
-        master.setPerformanceFee(0);
+        ITokenizedStrategy(address(master)).setPerformanceFee(0);
         a = _child();
         b = _child();
         master.addChild(address(a));
         master.addChild(address(b));
         asset.mint(address(this), 1000 * UNIT);
         asset.approve(address(master), type(uint256).max);
-        master.deposit(1000 * UNIT, address(this));
+        ITokenizedStrategy(address(master)).deposit(1000 * UNIT, address(this));
     }
 
     function _child() internal returns (MockReportedChildV1 result) {
         result = new MockReportedChildV1(address(asset));
-        result.setPerformanceFee(0);
-        result.setProfitMaxUnlockTime(0);
-        result.setKeeper(address(master));
+        ITokenizedStrategy(address(result)).setPerformanceFee(0);
+        ITokenizedStrategy(address(result)).setProfitMaxUnlockTime(0);
+        ITokenizedStrategy(address(result)).setKeeper(address(master));
     }
 
     function _claims() internal view returns (YearnMorphoRankedMaster_v1.ClaimBundle[] memory result) {
@@ -82,8 +83,8 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
     }
 
     function testDefault70_30AndWinnerReallocation() public {
-        assertApproxEqAbs(a.convertToAssets(a.balanceOf(address(master))), 700 * UNIT, 2);
-        assertApproxEqAbs(b.convertToAssets(b.balanceOf(address(master))), 300 * UNIT, 2);
+        assertApproxEqAbs(ITokenizedStrategy(address(a)).convertToAssets(ITokenizedStrategy(address(a)).balanceOf(address(master))), 700 * UNIT, 2);
+        assertApproxEqAbs(ITokenizedStrategy(address(b)).convertToAssets(ITokenizedStrategy(address(b)).balanceOf(address(master))), 300 * UNIT, 2);
         b.setNextGain(30 * UNIT);
         vm.warp(block.timestamp + 1 days);
         master.optimizeFunds(_claims());
@@ -91,8 +92,8 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
         assertEq(master.lastRanking(1), address(a), "runner up");
         assertEq(a.claimCount(), 1, "claim before reporting");
         assertEq(b.claimCount(), 1);
-        uint256 bValue = b.convertToAssets(b.balanceOf(address(master)));
-        uint256 aValue = a.convertToAssets(a.balanceOf(address(master)));
+        uint256 bValue = ITokenizedStrategy(address(b)).convertToAssets(ITokenizedStrategy(address(b)).balanceOf(address(master)));
+        uint256 aValue = ITokenizedStrategy(address(a)).convertToAssets(ITokenizedStrategy(address(a)).balanceOf(address(master)));
         assertApproxEqAbs(bValue, 721 * UNIT, 3);
         assertApproxEqAbs(aValue, 309 * UNIT, 3);
     }
@@ -104,7 +105,7 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
         // an otherwise unallocated third strategy.
         master.setProbeBps(50);
         asset.mint(address(this), 100 * UNIT);
-        master.deposit(100 * UNIT, address(this));
+        ITokenizedStrategy(address(master)).deposit(100 * UNIT, address(this));
         uint16[] memory weights = new uint16[](3);
         weights[0] = 6000;
         weights[1] = 3000;
@@ -120,7 +121,7 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
         uint256 sum = asset.balanceOf(address(master));
         for (uint256 i; i < master.childCount(); ++i) {
             MockReportedChildV1 child = MockReportedChildV1(master.children(i));
-            sum += child.convertToAssets(child.balanceOf(address(master)));
+            sum += ITokenizedStrategy(address(child)).convertToAssets(ITokenizedStrategy(address(child)).balanceOf(address(master)));
         }
         assertApproxEqAbs(sum, 1115 * UNIT, 4);
     }
@@ -133,13 +134,13 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
         vm.warp(block.timestamp + 1 days);
         master.optimizeFunds(_claims());
         assertEq(master.lastRanking(0), address(a));
-        assertEq(b.balanceOf(address(master)), 0);
+        assertEq(ITokenizedStrategy(address(b)).balanceOf(address(master)), 0);
         master.removeChild(address(b));
         assertEq(master.childCount(), 1);
     }
 
     function testRejectsUnreportedChildProfitLock() public {
-        b.setProfitMaxUnlockTime(1 days);
+        ITokenizedStrategy(address(b)).setProfitMaxUnlockTime(1 days);
         vm.warp(block.timestamp + 1 days);
         vm.expectRevert(YearnMorphoRankedMaster_v1.BadChild.selector);
         master.optimizeFunds(_claims());
@@ -149,7 +150,7 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
         vm.warp(block.timestamp + 1 days);
         master.optimizeFunds(_claims());
         vm.warp(block.timestamp + 1 days);
-        a.report();
+        ITokenizedStrategy(address(a)).report();
         vm.expectRevert(YearnMorphoRankedMaster_v1.UnauthorizedReport.selector);
         master.optimizeFunds(_claims());
     }
