@@ -162,26 +162,7 @@ contract YearnMorphoRankedMaster_v1 is BaseStrategy {
         // contract before claim+compound+report, and again immediately afterward.
         for (uint256 i; i < n; ++i) {
             address c = children[i];
-            IYearnMorphoChildV1 child = IYearnMorphoChildV1(c);
-            if (claims[i].child != c || child.profitMaxUnlockTime() != 0) revert BadChild();
-            if (child.lastReport() != lastMasterReport[c]) revert UnauthorizedReport();
-            uint256 beforePps = child.pricePerShare();
-            if (beforePps == 0) revert BadChild();
-
-            child.claimAndCompound(
-                claims[i].users, claims[i].tokens,
-                claims[i].amounts, claims[i].proofs,
-                claims[i].minNetAmountOut, claims[i].deadline
-            );
-            child.report();
-            uint256 afterPps = child.pricePerShare();
-            lastMasterReport[c] = child.lastReport();
-
-            // Positive or negative fractional return per cycle, scaled by 1e18.
-            uint256 change = afterPps > beforePps ? afterPps - beforePps : beforePps - afterPps;
-            uint256 magnitude = Math.mulDiv(change, ONE, beforePps);
-            if (magnitude > uint256(type(int256).max)) revert BadChild();
-            int256 score = afterPps >= beforePps ? int256(magnitude) : -int256(magnitude);
+            int256 score = _reportAndScore(c, claims[i]);
 
             // Stable insertion sort for <=10 strategies. Scores computed solely on-chain.
             uint256 j = i;
@@ -192,7 +173,6 @@ contract YearnMorphoRankedMaster_v1 is BaseStrategy {
             }
             order[j] = c;
             scores[j] = score;
-            emit ChildScore(c, beforePps, afterPps, score);
         }
 
         delete lastRanking;
@@ -201,6 +181,32 @@ contract YearnMorphoRankedMaster_v1 is BaseStrategy {
         lastOptimize = block.timestamp;
         _rebalance();
         emit Optimized(block.timestamp, order[0], scores[0]);
+    }
+
+    /// @dev Isolate Yearn report and Merkl proof calldata handling from
+    ///      ranking loop to avoid stack pressure; no stateful APR oracles.
+    function _reportAndScore(address c, ClaimBundle calldata input)
+        internal returns (int256 score)
+    {
+        IYearnMorphoChildV1 child = IYearnMorphoChildV1(c);
+        if (input.child != c || child.profitMaxUnlockTime() != 0) revert BadChild();
+        if (child.lastReport() != lastMasterReport[c]) revert UnauthorizedReport();
+        uint256 beforePps = child.pricePerShare();
+        if (beforePps == 0) revert BadChild();
+
+        child.claimAndCompound(
+            input.users, input.tokens, input.amounts, input.proofs,
+            input.minNetAmountOut, input.deadline
+        );
+        child.report();
+        uint256 afterPps = child.pricePerShare();
+        lastMasterReport[c] = child.lastReport();
+
+        uint256 change = afterPps >= beforePps ? afterPps - beforePps : beforePps - afterPps;
+        uint256 magnitude = Math.mulDiv(change, ONE, beforePps);
+        if (magnitude > uint256(type(int256).max)) revert BadChild();
+        score = afterPps >= beforePps ? int256(magnitude) : -int256(magnitude);
+        emit ChildScore(c, beforePps, afterPps, score);
     }
 
     // Minimum probe allocation to each strategy; remainder apportioned by
