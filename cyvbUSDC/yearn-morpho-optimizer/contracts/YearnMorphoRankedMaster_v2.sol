@@ -17,6 +17,7 @@ interface IYearnMorphoChildV1 is ITokenizedStrategy {
         uint256[] calldata amounts, bytes32[][] calldata proofs,
         uint256 minNetAmountOut, uint256 deadline
     ) external returns (uint256);
+    function compoundWithoutClaim() external;
 }
 
 /// @notice Master Yearn V3 strategy: claim/compound/report children first,
@@ -69,6 +70,8 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
     error MissingLiquidity();
     error Premature();
     error UnauthorizedReport();
+    error MissingMerklClaims();
+    error InvalidMerklBundle();
     error InsufficientSeedCapital(uint256 required, uint256 available);
 
     constructor(address _asset, string memory _name) BaseStrategy(_asset, _name) {
@@ -168,15 +171,20 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
         minimumInterval = interval;
     }
 
-    /// @notice Atomic sequence. Any failed Merkl claim, swap, report or
-    ///         withdrawal reverts all prior steps, preventing a half-cycle.
+    /// @notice Atomic sequence. Supply claim bundles for ANY SUBSET of the
+    ///         enabled children, but always at least one nonempty bundle.
+    ///         All other children still compound loose underlying and report,
+    ///         preserving complete and unbiased PPS comparisons.
     function optimizeFunds(ClaimBundle[] calldata claims)
         external onlyKeepers nonReentrantTokenized
     {
         uint256 n = children.length;
-        if (n == 0 || claims.length != n) revert BadChild();
+        if (n == 0) revert BadChild();
         if (lastOptimize != 0 && block.timestamp < lastOptimize + minimumInterval) revert Premature();
 
+        // 1-based index of the associated sparse proof bundle, or zero for
+        // claim-free maintenance. Validate all indices before external calls.
+        uint8[] memory claimIndex = _mapMerklClaims(claims);
         address[] memory order = new address[](n);
         int256[] memory scores = new int256[](n);
 
@@ -184,7 +192,7 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
         // contract before claim+compound+report, and again immediately afterward.
         for (uint256 i; i < n; ++i) {
             address c = children[i];
-            int256 score = _reportAndScore(c, claims[i]);
+            int256 score = _reportAndScore(c, claims, claimIndex[i]);
 
             // Stable insertion sort for <=10 strategies. Scores computed solely on-chain.
             uint256 j = i;
@@ -205,21 +213,60 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
         emit Optimized(block.timestamp, order[0], scores[0]);
     }
 
-    /// @dev Isolate Yearn report and Merkl proof calldata handling from
-    ///      ranking loop to avoid stack pressure; no stateful APR oracles.
-    function _reportAndScore(address c, ClaimBundle calldata input)
-        internal returns (int256 score)
+    /// @dev Bind sparse Merkl claims to registered child indices. Reject
+    ///      unknown children, duplicates, empty claim entries and malformed
+    ///      tuples before any claim/report or money movement begins.
+    function _mapMerklClaims(ClaimBundle[] calldata claims)
+        internal view returns (uint8[] memory indexed)
     {
+        uint256 n = children.length;
+        if (claims.length == 0) revert MissingMerklClaims();
+        if (claims.length > n) revert InvalidMerklBundle();
+        indexed = new uint8[](n);
+        for (uint256 j; j < claims.length; ++j) {
+            ClaimBundle calldata bundle = claims[j];
+            uint256 entries = bundle.users.length;
+            if (
+                entries == 0 ||
+                entries != bundle.tokens.length ||
+                entries != bundle.amounts.length ||
+                entries != bundle.proofs.length ||
+                !isChild[bundle.child]
+            ) revert InvalidMerklBundle();
+
+            bool found;
+            for (uint256 i; i < n; ++i) {
+                if (children[i] == bundle.child) {
+                    if (indexed[i] != 0) revert InvalidMerklBundle();
+                    indexed[i] = uint8(j + 1); // n <= 10, fits uint8
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) revert InvalidMerklBundle();
+        }
+    }
+
+    /// @dev Isolate claim / no-claim maintenance and PPS measurement from
+    ///      ranking loop to avoid stack pressure; no APR oracle involved.
+    function _reportAndScore(
+        address c, ClaimBundle[] calldata claims, uint8 claimIndex
+    ) internal returns (int256 score) {
         IYearnMorphoChildV1 child = IYearnMorphoChildV1(c);
-        if (input.child != c || child.profitMaxUnlockTime() != 0) revert BadChild();
+        if (child.profitMaxUnlockTime() != 0) revert BadChild();
         if (child.lastReport() != lastMasterReport[c]) revert UnauthorizedReport();
         uint256 beforePps = child.pricePerShare();
         if (beforePps == 0) revert BadChild();
 
-        child.claimAndCompound(
-            input.users, input.tokens, input.amounts, input.proofs,
-            input.minNetAmountOut, input.deadline
-        );
+        if (claimIndex != 0) {
+            ClaimBundle calldata input = claims[uint256(claimIndex) - 1];
+            child.claimAndCompound(
+                input.users, input.tokens, input.amounts, input.proofs,
+                input.minNetAmountOut, input.deadline
+            );
+        } else {
+            child.compoundWithoutClaim();
+        }
         child.report();
         uint256 afterPps = child.pricePerShare();
         lastMasterReport[c] = child.lastReport();
