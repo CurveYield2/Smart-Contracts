@@ -134,22 +134,9 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
         ITokenizedStrategy(masterAddress).setPerformanceFee(0);
         require(master.minimumChildDeposit() == 100_000, "minimum != 0.1 vbUSDC");
 
-        string[4] memory names = [
-            "CurveYield vbUSDC - avKAT Morpho",
-            "CurveYield vbUSDC - siUSD Morpho",
-            "CurveYield vbUSDC - weETH Morpho",
-            "CurveYield vbUSDC - yvAUSD Morpho"
-        ];
         address[4] memory created;
         for (uint256 i; i < 4; ++i) {
-            YearnMorphoMarketChild_v2 child = new YearnMorphoMarketChild_v2(
-                VBUSDC, names[i], morphoAddress, Id.wrap(marketIds[i]),
-                masterAddress, KAT, CURVEYIELD_ROUTER, MERKL_DISTRIBUTOR
-            );
-            created[i] = address(child);
-            ITokenizedStrategy(created[i]).setKeeper(masterAddress);
-            ITokenizedStrategy(created[i]).setProfitMaxUnlockTime(0);
-            ITokenizedStrategy(created[i]).setPerformanceFee(0);
+            created[i] = _deployChild(morphoAddress, marketIds[i], masterAddress, i);
             master.addChild(created[i]);
         }
         require(master.childCount() == 4, "child registration failed");
@@ -190,4 +177,23 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
         emit CurveYieldYearnDeployment(vaultAddress, masterAddress, owner, created, marketIds, seed);
         vm.stopBroadcast();
     }
+    function _deployChild(address morpho, bytes32 id, address master, uint256 index)
+        internal returns (address childAddress)
+    {
+        string memory name;
+        if (index == 0) name = "CurveYield vbUSDC - avKAT Morpho";
+        else if (index == 1) name = "CurveYield vbUSDC - siUSD Morpho";
+        else if (index == 2) name = "CurveYield vbUSDC - weETH Morpho";
+        else name = "CurveYield vbUSDC - yvAUSD Morpho";
+
+        YearnMorphoMarketChild_v2 child = new YearnMorphoMarketChild_v2(
+            VBUSDC, name, morpho, Id.wrap(id), master,
+            KAT, CURVEYIELD_ROUTER, MERKL_DISTRIBUTOR
+        );
+        childAddress = address(child);
+        ITokenizedStrategy(childAddress).setKeeper(master);
+        ITokenizedStrategy(childAddress).setProfitMaxUnlockTime(0);
+        ITokenizedStrategy(childAddress).setPerformanceFee(0);
+    }
+
 }
