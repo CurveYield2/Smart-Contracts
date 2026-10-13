@@ -217,12 +217,12 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
     ///      unknown children, duplicates, empty claim entries and malformed
     ///      tuples before any claim/report or money movement begins.
     function _mapMerklClaims(ClaimBundle[] calldata claims)
-        internal view returns (uint8[] memory indexed)
+        internal view returns (uint8[] memory claimIndices)
     {
         uint256 n = children.length;
         if (claims.length == 0) revert MissingMerklClaims();
         if (claims.length > n) revert InvalidMerklBundle();
-        indexed = new uint8[](n);
+        claimIndices = new uint8[](n);
         for (uint256 j; j < claims.length; ++j) {
             ClaimBundle calldata bundle = claims[j];
             uint256 entries = bundle.users.length;
@@ -237,8 +237,8 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
             bool found;
             for (uint256 i; i < n; ++i) {
                 if (children[i] == bundle.child) {
-                    if (indexed[i] != 0) revert InvalidMerklBundle();
-                    indexed[i] = uint8(j + 1); // n <= 10, fits uint8
+                    if (claimIndices[i] != 0) revert InvalidMerklBundle();
+                    claimIndices[i] = uint8(j + 1); // n <= 10, fits uint8
                     found = true;
                     break;
                 }
