@@ -51,10 +51,25 @@ contract YearnMorphoRouterKatanaFork_v2 is Test {
         assertEq(IERC20LiveForkV2(KAT).balanceOf(address(child)), KAT_AMOUNT);
         uint256 totalBefore = child.suppliedAssets();
 
-        address[] memory users = new address[](0);
-        address[] memory tokens = new address[](0);
-        uint256[] memory amounts = new uint256[](0);
-        bytes32[][] memory proofs = new bytes32[][](0);
+        // This fork test is strictly for router/morpho integration, not
+        // Merkl proof verification. Mock the distributor's external claim,
+        // but pass a real nonempty claim tuple through the strategy.
+        address[] memory users = new address[](1);
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        bytes32[][] memory proofs = new bytes32[][](1);
+        users[0] = address(child);
+        tokens[0] = KAT;
+        amounts[0] = KAT_AMOUNT;
+        proofs[0] = new bytes32[](0); // valid for a single-leaf proof
+        vm.mockCall(
+            MERKL,
+            abi.encodeWithSignature(
+                "claim(address[],address[],uint256[],bytes32[][])",
+                users, tokens, amounts, proofs
+            ),
+            bytes("")
+        );
 
         uint256 received = child.claimAndCompound(
             users, tokens, amounts, proofs, 1, block.timestamp + 300
@@ -63,6 +78,6 @@ contract YearnMorphoRouterKatanaFork_v2 is Test {
         assertGt(received, 0, "router did not deliver vbUSDC");
         assertEq(IERC20LiveForkV2(KAT).balanceOf(address(child)), 0, "KAT unswapped");
         assertEq(IERC20LiveForkV2(VBUSDC).balanceOf(address(child)), 0, "vbUSDC not compounded");
-        assertGe(child.suppliedAssets(), totalBefore + received, "Morpho position not increased");
+        assertGe(child.suppliedAssets() + 1, totalBefore + received, "Morpho position not increased (1 atomic unit rounding)");
     }
 }
