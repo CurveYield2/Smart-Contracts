@@ -1,0 +1,209 @@
+name: Package CurveYield vbUSDC local deployment
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/yearn_morpho_local_deploy_bundle.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: curveyield-yearn-local-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Build and validate self-contained ZIP (GitHub runner)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE=CurveYield_vbUSDC_Katana_YearnV3_LocalDeployment
+          ROOT="$RUNNER_TEMP/$PACKAGE"
+          mkdir -p "$ROOT/src" "$ROOT/script" "$ROOT/test"
+          cp cyvbUSDC/yearn-morpho-optimizer/contracts/*.sol "$ROOT/src/"
+          cp cyvbUSDC/yearn-morpho-optimizer/script/*.sol "$ROOT/script/"
+          cp cyvbUSDC/yearn-morpho-optimizer/test/*.sol "$ROOT/test/"
+          cp cyvbUSDC/yearn-morpho-optimizer/README_v2.md "$ROOT/README_PROJECT.md"
+          cat > "$ROOT/foundry.toml" <<'TOML'
+          [profile.default]
+          src = "src"
+          test = "test"
+          script = "script"
+          out = "out"
+          libs = ["lib"]
+          solc = "0.8.30"
+          optimizer = true
+          optimizer_runs = 200
+          evm_version = "cancun"
+          remappings = [
+            "@tokenized-strategy/=lib/tokenized-strategy/src/",
+            "@morpho-blue/=lib/morpho-blue/src/",
+            "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+            "forge-std/=lib/forge-std/src/"
+          ]
+          TOML
+          cat > "$ROOT/README_START_HERE.md" <<'DOC'
+          # CurveYield vbUSDC — complete local deployment bundle
+
+          ALL relevant Solidity source files and vendored Forge library sources
+          are included in this archive. No Git checkout or forge install needed
+          on your local computer. Prerequisites: Foundry (forge, cast, anvil),
+          Solidity compiler 0.8.30 (Foundry may download this on first build),
+          and access to a Katana RPC URL. On Windows, use WSL Bash.
+
+          ## Registration order (initial allocation, pre-harvest)
+
+          1. yvAUSD/vbUSDC — first ranked: 70% of funds AFTER floors
+          2. avKAT/vbUSDC — second ranked: 30% of funds AFTER floors
+          3. siUSD/vbUSDC — 0.1 vbUSDC minimum
+          4. weETH/vbUSDC — 0.1 vbUSDC minimum
+
+          With 2 vbUSDC initially, target shares are 1.22 / 0.58 / 0.10 /
+          0.10 vbUSDC respectively. Measured PPS replaces registration order
+          after the first optimization. The master allows 1-10 children.
+
+          ## Commands
+
+          Compile and unit-test: bash ./check_local.sh
+
+          Full FUNDED Katana fork simulation (2 vbUSDC on LOCAL Anvil only):
+          KATANA_RPC_URL=https://rpc.katana.network/ bash ./simulate_full.sh
+
+          For a dry-run against real Katana without broadcasting, set:
+          export KATANA_RPC_URL=https://rpc.katana.network/
+          export DEPLOYER_FX=YOUR_PRIVATE_KEY
+          export FINAL_OWNER=YOUR_OWNER_MULTISIG
+          export INITIAL_SEED_VBUSDC=2000000
+          forge script script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 --rpc-url "$KATANA_RPC_URL" -vvvv
+
+          For LIVE deployment only after approving an independent security audit,
+          verifying the real Merkl campaign proof flow and confirming owner
+          permissions, run: bash ./deploy_live.sh
+
+          The live script requires an explicit manual confirmation phrase,
+          the DEPLOYER_FX secret, KATANA_RPC_URL and FINAL_OWNER.
+          Optional: STRATEGY_KEEPER. INITIAL_SEED_VBUSDC units are 1e-6 vbUSDC;
+          2000000 is 2 vbUSDC. Minimum total seed for four children is 400000.
+
+          The FINAL_OWNER must later accept the Yearn vault role-manager handoff
+          and management of the master and all four children. The new token
+          symbol cyvbUSDC overlaps an existing, DIFFERENT IPOR vault symbol.
+          Do NOT use fork-only addresses to send real money.
+
+          Real Merkl proof redemption is NOT proven for freshly deployed child
+          contracts; current fork tests exercise the real cyavKAT swap router
+          with the Merkl distributor call mocked. Zero profit unlocking carries
+          MEV/flash-deposit risks requiring audit before production funding.
+          The IPOR vault had empty live substrates, so original three market
+          IDs came from its deployment source, not current IPOR allocations.
+
+          SOURCE_COMMIT.txt and SOURCE_SHA256SUMS.txt record exact provenance.
+          The lib/ directory contains pinned dependencies including licenses.
+          DOC
+          cat > "$ROOT/check_local.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$(dirname "$0")"
+          forge build --sizes
+          forge test --match-path "test/YearnMorphoRankedMasterTest_v2.t.sol" -vv
+          forge test --match-path "test/YearnMorphoMarketChildTest_v2.t.sol" -vv
+          SH
+          cat > "$ROOT/simulate_full.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$(dirname "$0")"
+          KATANA_RPC_URL="${KATANA_RPC_URL:-https://rpc.katana.network/}"
+          RPC=http://127.0.0.1:8545
+          if cast chain-id --rpc-url "$RPC" >/dev/null 2>&1; then
+            echo "Port 8545 already has an RPC; refusing to touch it."
+            exit 1
+          fi
+          LOG="$(mktemp)"
+          anvil --fork-url "$KATANA_RPC_URL" --chain-id 747474 --port 8545 --silent > "$LOG" 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true; rm -f "$LOG"' EXIT
+          for i in $(seq 1 60); do
+            if cast chain-id --rpc-url "$RPC" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          test "$(cast chain-id --rpc-url "$RPC")" = "747474"
+          SIGNER=0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf
+          VBUSDC=0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36
+          MORPHO=0xD50F2DffFd62f94Ee4AEd9ca05C61d0753268aBc
+          cast rpc anvil_setBalance "$SIGNER" 0x3635C9ADC5DEA00000 --rpc-url "$RPC"
+          cast rpc anvil_setBalance "$MORPHO" 0x3635C9ADC5DEA00000 --rpc-url "$RPC"
+          BAL=$(cast call "$VBUSDC" "balanceOf(address)" "$MORPHO" --rpc-url "$RPC")
+          test "$(cast to-dec "$BAL")" -ge 2000000
+          cast rpc anvil_impersonateAccount "$MORPHO" --rpc-url "$RPC"
+          cast send "$VBUSDC" "transfer(address,uint256)(bool)" "$SIGNER" 2000000 \
+            --from "$MORPHO" --unlocked --rpc-url "$RPC"
+          cast rpc anvil_stopImpersonatingAccount "$MORPHO" --rpc-url "$RPC"
+          export DEPLOYER_FX=1 INITIAL_SEED_VBUSDC=2000000
+          forge script script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 \
+            --rpc-url "$RPC" -vvvv
+          echo "PASS - fork only; no live transactions broadcast."
+          SH
+          cat > "$ROOT/deploy_live.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$(dirname "$0")"
+          : "${DEPLOYER_FX:?Set secret DEPLOYER_FX}"
+          : "${KATANA_RPC_URL:?Set Katana RPC URL}"
+          : "${FINAL_OWNER:?Set FINAL_OWNER governance wallet}"
+          if [ "$DEPLOYER_FX" = 1 ] || [ "$DEPLOYER_FX" = 0x1 ]; then
+            echo "Refusing to broadcast with test dummy key."
+            exit 1
+          fi
+          test "$(cast chain-id --rpc-url "$KATANA_RPC_URL")" = 747474
+          echo "LIVE deployment: CurveYield vbUSDC (yvAUSD first / avKAT second)"
+          echo "Owner: $FINAL_OWNER"
+          echo "Initial seed atomic units: ${INITIAL_SEED_VBUSDC:-0}"
+          read -r -p 'Type DEPLOY KATANA to broadcast LIVE transactions: ' CONFIRM
+          test "$CONFIRM" = 'DEPLOY KATANA' || { echo Cancelled; exit 1; }
+          forge script script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 \
+            --rpc-url "$KATANA_RPC_URL" --broadcast --slow -vvvv
+          SH
+          cat > "$ROOT/DEPENDENCY_LOCK.txt" <<'LOCK'
+          forge-std: 0258fe875e1d8e207c1eb7175e542ea32356773c
+          yearn/tokenized-strategy: 90514f120fc3f500a2c8796da45a267dff5b8dce
+          morpho-org/morpho-blue: 8e26ca6a8dbc5089edcd67fb576248810fd2870a
+          OpenZeppelin/openzeppelin-contracts: v4.9.6
+          Solidity: 0.8.30; EVM version: cancun.
+          LOCK
+          printf 'repository: CurveYield2/Smart-Contracts\nbranch: main\nsha: %s\nworkflow_run: %s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > "$ROOT/SOURCE_COMMIT.txt"
+          chmod +x "$ROOT/"*.sh
+          cd "$ROOT"
+          git init -q
+          forge install --no-git foundry-rs/forge-std@0258fe875e1d8e207c1eb7175e542ea32356773c
+          forge install --no-git yearn/tokenized-strategy@90514f120fc3f500a2c8796da45a267dff5b8dce
+          forge install --no-git morpho-org/morpho-blue@8e26ca6a8dbc5089edcd67fb576248810fd2870a
+          forge install --no-git OpenZeppelin/openzeppelin-contracts@v4.9.6
+          rm -rf .git
+          find lib -name .git -type d -prune -exec rm -rf '{}' +
+          forge build --sizes
+          forge test --match-path "test/YearnMorphoRankedMasterTest_v2.t.sol" -vv
+          forge test --match-path "test/YearnMorphoMarketChildTest_v2.t.sol" -vv
+          rm -rf out cache broadcast
+          sha256sum src/*.sol script/*.sol test/*.sol > SOURCE_SHA256SUMS.txt
+          du -sh lib
+          cd "$RUNNER_TEMP"
+          zip -q -r "$GITHUB_WORKSPACE/$PACKAGE.zip" "$PACKAGE" -x "*/.DS_Store" "*/.git/*"
+          ls -lh "$GITHUB_WORKSPACE/$PACKAGE.zip"
+          sha256sum "$GITHUB_WORKSPACE/$PACKAGE.zip"
+      - name: Upload complete deployment ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: CurveYield_vbUSDC_YearnV3_LocalDeployment
+          path: CurveYield_vbUSDC_Katana_YearnV3_LocalDeployment.zip
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
