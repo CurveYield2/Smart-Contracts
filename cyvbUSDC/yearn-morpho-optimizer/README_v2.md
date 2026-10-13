@@ -58,6 +58,10 @@ The Katana fork confirmed all four loan tokens are the exact vbUSDC address.
   children; individual Yearn vault deposits smaller than that are expected to
   revert until sufficient master assets exist. Subsequent small deposits do not
   re-impose the four minimums on each deposit.
+- If the master is already funded, **adding a new child seeds it immediately**
+  by rebalancing existing children, before its first PPS measurement. Likewise,
+  changing the minimum automatically rebalances; a floor too large to fund
+  reverts without changing its prior value.
 - `setProbeBps` (0 by default) is an *additional proportional* optional probe;
   effective floor is `max(minimumChildDeposit, probeBps of NAV)`.
 - Zero-profit-unlock children are required for the explicit PPS-before/after
