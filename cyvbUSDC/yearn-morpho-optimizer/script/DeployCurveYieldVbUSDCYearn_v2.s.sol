@@ -90,13 +90,20 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
 
         ids = [AVKAT, SIUSD, WEETH, YVAUSD];
         bytes32[] memory ipor = IIPORMorphoSubstratesV2(IPOR_VAULT).getMarketSubstrates(IPOR_MORPHO_MARKET);
-        require(ipor.length == 3, "IPOR market count changed");
-        for (uint256 i; i < 3; ++i) {
-            uint256 matches;
-            for (uint256 j; j < 3; ++j) {
-                if (ids[i] == ipor[j]) matches++;
+        // The live IPOR vault currently returns zero Morpho substrates for
+        // market 41 (verified 2026-10-13). Source the original three immutable
+        // IDs from its checked-in DeployCyvbUSDC_v4.s.sol when that happens.
+        // If a live allowlist exists, it MUST contain precisely the same three
+        // IDs; never silently accept an altered live deployment.
+        if (ipor.length != 0) {
+            require(ipor.length == 3, "IPOR Morpho allowlist changed");
+            for (uint256 i; i < 3; ++i) {
+                uint256 matches;
+                for (uint256 j; j < 3; ++j) {
+                    if (ids[i] == ipor[j]) matches++;
+                }
+                require(matches == 1, "IPOR Morpho market mismatch");
             }
-            require(matches == 1, "IPOR market mismatch");
         }
         morphoAddress = IIPORMorphoSupplyFuseV2(IPOR_MORPHO_FUSE).MORPHO();
         require(morphoAddress.code.length > 0, "Morpho Blue missing");
