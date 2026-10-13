@@ -43,8 +43,22 @@ The Katana fork confirmed all four loan tokens are the exact vbUSDC address.
 
 ## Master allocation and child floor
 
-- Each optimization: **pre-PPS → child.claimAndCompound(Merkl) →
-  child.report() → post-PPS → rank signed percentage returns → rebalance**.
+- Each optimization requires **at least one nonempty Merkl claim bundle**,
+  but bundles may be provided for **any subset** of the enabled children, in
+  any order, up to all ten. Unknown, duplicated, zero-entry, or malformed
+  bundles revert atomically. Merkl verifies each claim proof on-chain; for
+  single-leaf Merkle trees a valid claim entry can have zero sibling hashes.
+- For a child **with** claim data: **pre-PPS → claimAndCompound(Merkl proof
+  arrays) → child.report() → post-PPS**. `claimAndCompound` explicitly rejects
+  zero claim entries.
+- For a child **without** claim data: **pre-PPS → compoundWithoutClaim()
+  (sweep idle vbUSDC only) → child.report() → post-PPS**. A child without
+  proofs does not attempt an unsafe KAT swap without a slippage minimum; its
+  already-held KAT remains until a future proven claim bundle. All children
+  participate in performance ranking; rebalance runs after all reports.
+- **Zero** Merkl claim bundles are intentionally invalid for the master's
+  `optimizeFunds` call. This is an owner-requested execution requirement,
+  not a limitation of Yearn's underlying `report()`.
 - Default performance rank weights **70% best / 30% second**; up to **10** child
   strategies; change `setRankWeights([..])` to any list totaling 10000 basis points.
 - **Owner-controlled hard minimum per child**:
@@ -125,6 +139,7 @@ Do not execute live until fork-level reward/liquidity and audit approval.
   and all four Morpho market loan tokens were confirmed vbUSDC.
 - Fork simulation addresses (deterministic dummy signer) **are not actual
   deployed addresses** and must not be used to send funds.
-- The `MINIMUM` floor, Merkl claim/reinvest and Yearn PPS rank functionality
-  are only mock-unit-tested so far. Run KAT→vbUSDC actual market fork tests and
-  targeted audit before depositing funds.
+- Actual Merkl distributor proof validation still requires a live eligible
+  reward for one of the Yearn child addresses. Mock proofs unit-test forwarding
+  and child eligibility checks; a separate Katana fork test uses the **real
+  cyavKAT Sushi fee router** and Morpho, but mocks the Merkl distributor call.
