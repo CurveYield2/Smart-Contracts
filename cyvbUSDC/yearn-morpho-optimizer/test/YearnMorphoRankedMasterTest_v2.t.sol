@@ -58,7 +58,7 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
         // fixture implementation address. Consume that nonce before etching.
         new MockAssetRankedV1();
         asset = new MockAssetRankedV1();
-        vm.etch(0x2e234DAe75C793f67A35089C9d99245E1C58470b, address(impl).code);
+        vm.etch(0x310f5Db015E9d6E542fd41bd4542640790791e76, address(impl).code);
         master = new YearnMorphoRankedMaster_v2(address(asset), "Master");
         ITokenizedStrategy(address(master)).setPerformanceFee(0);
         a = _child();
