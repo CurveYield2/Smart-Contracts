@@ -40,6 +40,14 @@ interface IERC20ApproveV2 {
     function balanceOf(address owner) external view returns (uint256);
 }
 
+/// @dev Exact same router interface as the active cyavKAT IPOR router
+///      at 0x01F9894f92ea9224fECc8C35482E20a05De13582.
+interface ICurveYieldSushiFeeRouterKatanaV2 {
+    function routeFor(address tokenIn, address tokenOut) external view returns (bytes memory);
+    function routeTwapGuard(address tokenIn, address tokenOut)
+        external view returns (uint32 window, uint16 maxDeviationBps, bool configured);
+}
+
 /// @title CurveYield vbUSDC Yearn V3 vault + 4 dedicated direct-market child strategies.
 /// @notice **No private key stored in source.**  Broadcast ONLY after successful fork
 ///         preflight and security review. In GitHub CI the key is a dummy fork signer.
@@ -82,6 +90,14 @@ contract DeployCurveYieldVbUSDCYearn_v2 is Script {
         require(VBUSDC.code.length > 0 && KAT.code.length > 0, "asset/reward missing");
         require(CURVEYIELD_ROUTER.code.length > 0, "reward swap router missing");
         require(MERKL_DISTRIBUTOR.code.length > 0, "Merkl distributor missing");
+        // cyavKAT uses this very same deployed Sushi V3 fee router.
+        // The child uses its unchanged v1-compatible swapExactInput ABI.
+        bytes memory rewardRoute =
+            ICurveYieldSushiFeeRouterKatanaV2(CURVEYIELD_ROUTER).routeFor(KAT, VBUSDC);
+        require(rewardRoute.length != 0, "cyavKAT router KAT->vbUSDC route missing");
+        (uint32 twapWindow, uint16 deviationBps, bool enabled) =
+            ICurveYieldSushiFeeRouterKatanaV2(CURVEYIELD_ROUTER).routeTwapGuard(KAT, VBUSDC);
+        require(enabled && twapWindow != 0 && deviationBps <= 2000, "router TWAP guard inactive");
         require(
             keccak256(bytes(IYearnVaultFactoryKatanaV2(YEARN_FACTORY).apiVersion())) ==
                 keccak256(bytes("3.1.0")),
