@@ -145,8 +145,9 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
     function testRejectsUnreportedChildProfitLock() public {
         ITokenizedStrategy(address(b)).setProfitMaxUnlockTime(1 days);
         vm.warp(block.timestamp + 1 days);
+        YearnMorphoRankedMaster_v1.ClaimBundle[] memory bundles = _claims();
         vm.expectRevert(YearnMorphoRankedMaster_v1.BadChild.selector);
-        master.optimizeFunds(_claims());
+        master.optimizeFunds(bundles);
     }
 
     function testRejectsExternalReportBeforeCycle() public {
@@ -154,7 +155,8 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
         master.optimizeFunds(_claims());
         vm.warp(block.timestamp + 1 days);
         ITokenizedStrategy(address(a)).report();
+        YearnMorphoRankedMaster_v1.ClaimBundle[] memory bundles = _claims();
         vm.expectRevert(YearnMorphoRankedMaster_v1.UnauthorizedReport.selector);
-        master.optimizeFunds(_claims());
+        master.optimizeFunds(bundles);
     }
 }
