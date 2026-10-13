@@ -1,0 +1,63 @@
+name: Yearn Morpho optimizer verify v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "cyvbUSDC/yearn-morpho-optimizer/**"
+      - ".github/workflows/yearn_morpho_optimizer_verify_v2.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yearn-morpho-optimizer-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  katana-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Foundry (GitHub runner only)
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Fetch pinned dependencies (GitHub runner only)
+        run: |
+          forge install --no-git foundry-rs/forge-std
+          forge install --no-git yearn/tokenized-strategy
+          forge install --no-git morpho-org/morpho-blue
+          forge install --no-git OpenZeppelin/openzeppelin-contracts@v4.9.6
+      - name: Isolated ephemeral Foundry config
+        run: |
+          cat > foundry.toml <<'EOF'
+          [profile.default]
+          src = "cyvbUSDC/yearn-morpho-optimizer/contracts"
+          test = "cyvbUSDC/yearn-morpho-optimizer/test"
+          script = "cyvbUSDC/yearn-morpho-optimizer/script"
+          out = "out"
+          libs = ["lib"]
+          solc = "0.8.30"
+          optimizer = true
+          optimizer_runs = 200
+          evm_version = "cancun"
+          remappings = [
+            "@tokenized-strategy/=lib/tokenized-strategy/src/",
+            "@morpho-blue/=lib/morpho-blue/src/",
+            "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+            "forge-std/=lib/forge-std/src/"
+          ]
+          EOF
+      - name: Compile v2 contracts and deployment script
+        run: forge build --sizes
+      - name: Run optimizer v2 unit tests
+        run: forge test --match-path "cyvbUSDC/yearn-morpho-optimizer/test/*_v2.t.sol" -vvvv
+      - name: Simulate complete real Katana vault and four-child deployment (NEVER broadcast)
+        env:
+          DEPLOYER_FX: "1"
+          INITIAL_SEED_VBUSDC: "0"
+        run: |
+          forge script cyvbUSDC/yearn-morpho-optimizer/script/DeployCurveYieldVbUSDCYearn_v2.s.sol:DeployCurveYieldVbUSDCYearn_v2 \
+            --rpc-url https://rpc.katana.network/ -vvvv
