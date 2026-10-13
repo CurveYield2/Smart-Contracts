@@ -111,7 +111,7 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
         weights[1] = 3000;
         weights[2] = 1000;
         master.setRankWeights(weights);
-        c.setNextGain(5 * UNIT);
+        c.setNextGain(1e15); // modest 0.2% PPS increase on the 0.5-token probe
         b.setNextGain(10 * UNIT);
         vm.warp(block.timestamp + 1 days);
         master.optimizeFunds(_claims());
@@ -123,7 +123,7 @@ contract YearnMorphoRankedMasterTest_v1 is Test {
             MockReportedChildV1 child = MockReportedChildV1(master.children(i));
             sum += ITokenizedStrategy(address(child)).convertToAssets(ITokenizedStrategy(address(child)).balanceOf(address(master)));
         }
-        assertApproxEqAbs(sum, 1115 * UNIT, 4);
+        assertApproxEqAbs(sum, 1110 * UNIT + 1e15, 4);
     }
 
     function testOneHundredPercentSingleWinnerAndRemoveSecond() public {
