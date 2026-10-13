@@ -1,7 +1,7 @@
 # CurveYield vbUSDC — Yearn V3 ranked Morpho optimizer v2
 
-**Status:** 2026-10-13 **GitHub Actions unit + Katana fork deployment simulation PASS**.
-**Not broadcast to Katana. Not security audited. Draft PR, do not merge/deploy until review.**
+**Status:** 2026-10-13 **merged into `main`; 25/25 focused tests and a fully seeded Katana-fork deployment simulation PASS**.
+**Not broadcast to live Katana. Not security audited; production deployment still requires review.**
 
 ## Vault identity and actual deployment
 
@@ -130,11 +130,15 @@ Do not execute live until fork-level reward/liquidity and audit approval.
 
 ## Verification evidence
 
-- Latest successful GitHub Action:
-  https://github.com/CurveYield2/Smart-Contracts/actions/runs/38474562973
-- Focused v2 unit tests: **13 passed, 0 failed** (8 master, 5 child)
-- GitHub-hosted funded Anvil fork: complete 4-child + master + official
-  Yearn V3.1.0 factory vault deployment replay PASS; no mainnet broadcast.
+- Latest successful GitHub Action on `main` with funded deployment:
+  https://github.com/CurveYield2/Smart-Contracts/actions/runs/38477566433
+- Focused v2 tests: **25 passed, 0 failed** (15 master, 8 child, 2 real-router
+  integration tests).
+- GitHub-hosted funded Anvil Katana fork: created all four children, master,
+  and official Yearn V3.1.0 factory vault, then simulated a **2 vbUSDC initial
+  deposit** and asserted the vault funded its master, each child received
+  shares, and every child's assets were at least its **0.1 vbUSDC floor**
+  within 2 atomic units of ERC4626 rounding. No live network broadcast.
 - The onchain factory returned API version **3.1.0**, implementation code exists,
   and all four Morpho market loan tokens were confirmed vbUSDC.
 - Fork simulation addresses (deterministic dummy signer) **are not actual
