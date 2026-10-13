@@ -6,6 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {TokenizedStrategy} from "@tokenized-strategy/TokenizedStrategy.sol";
 import {ITokenizedStrategy} from "@tokenized-strategy/interfaces/ITokenizedStrategy.sol";
 import {Id, Market, MarketParams} from "@morpho-blue/interfaces/IMorpho.sol";
+import {MorphoStorageLib} from "@morpho-blue/libraries/periphery/MorphoStorageLib.sol";
 import {YearnMorphoMarketChild_v1} from "../contracts/YearnMorphoMarketChild_v1.sol";
 
 contract MockRewardAssetChildV1 is ERC20 {
@@ -38,6 +39,16 @@ contract MockMorphoDirectMarketV1 {
         require(Id.unwrap(id) == Id.unwrap(marketId), "market");
         return data;
     }
+    // Morpho's current official MorphoLib reads supplyShares from canonical
+    // storage slots via extSloads, rather than the legacy supplyShares getter.
+    function extSloads(bytes32[] calldata slots) external view returns (bytes32[] memory result) {
+        result = new bytes32[](slots.length);
+        bytes32 ownedPosition = MorphoStorageLib.positionSupplySharesSlot(marketId, msg.sender);
+        for (uint256 i; i < slots.length; ++i) {
+            if (slots[i] == ownedPosition) result[i] = bytes32(shareBalances[msg.sender]);
+        }
+    }
+
 
     function supplyShares(Id id, address account) external view returns (uint256) {
         require(Id.unwrap(id) == Id.unwrap(marketId), "market");
