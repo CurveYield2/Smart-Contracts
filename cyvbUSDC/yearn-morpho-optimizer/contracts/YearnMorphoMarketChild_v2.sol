@@ -120,9 +120,10 @@ contract YearnMorphoMarketChild_v2 is BaseStrategy {
         _freeFunds(amount);
     }
 
-    /// @notice Master supplies authenticated Merkl proofs and conservative swap floor.
-    ///         Rewards MUST be attributed to this strategy address; other recipients
-    ///         are prohibited. No offchain APY is accepted or stored.
+    /// @notice Only the master may claim Merkl rewards. At least one claim
+    ///         entry is mandatory. A valid single-leaf Merkle proof can have
+    ///         zero sibling hashes, so do not require proofs[i].length > 0.
+    ///         The Merkl distributor verifies proofs against its on-chain root.
     function claimAndCompound(
         address[] calldata users,
         address[] calldata tokens,
@@ -133,15 +134,30 @@ contract YearnMorphoMarketChild_v2 is BaseStrategy {
     ) external nonReentrantTokenized returns (uint256 gained) {
         if (msg.sender != master) revert WrongCaller();
         uint256 n = users.length;
-        if (n != tokens.length || n != amounts.length || n != proofs.length) revert BadClaim();
+        if (n == 0 || n != tokens.length || n != amounts.length || n != proofs.length) revert BadClaim();
         for (uint256 i; i < n; ++i) {
             if (users[i] != address(this) || tokens[i] != address(rewardToken)) revert BadClaim();
         }
+        distributor.claim(users, tokens, amounts, proofs);
+        return _swapAndCompound(minNetAmountOut, deadline, n);
+    }
 
-        if (n != 0) distributor.claim(users, tokens, amounts, proofs);
+    /// @notice Claim-free maintenance for a child with no Merkl proof this
+    ///         cycle. Leaves any existing KAT untouched (there is no new
+    ///         keeper-supplied minimum output). Reports still capture lending
+    ///         yield when master calls Yearn report() afterwards.
+    function compoundWithoutClaim() external nonReentrantTokenized {
+        if (msg.sender != master) revert WrongCaller();
+        if (!TokenizedStrategy.isShutdown()) {
+            _deployFunds(asset.balanceOf(address(this)));
+        }
+    }
 
+    function _swapAndCompound(
+        uint256 minNetAmountOut, uint256 deadline, uint256 claimEntries
+    ) internal returns (uint256 gained) {
         uint256 toSell = rewardToken.balanceOf(address(this));
-        emit ClaimedAndCompounded(n, toSell);
+        emit ClaimedAndCompounded(claimEntries, toSell);
         if (toSell != 0) {
             if (deadline < block.timestamp) revert Expired();
             if (minNetAmountOut == 0) revert BadSwap();
