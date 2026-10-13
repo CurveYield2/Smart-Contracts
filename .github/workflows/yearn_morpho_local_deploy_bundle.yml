@@ -28,14 +28,14 @@ jobs:
           set -euo pipefail
           PACKAGE=CurveYield_vbUSDC_Katana_YearnV3_LocalDeployment
           ROOT="$RUNNER_TEMP/$PACKAGE"
-          mkdir -p "$ROOT/src" "$ROOT/script" "$ROOT/test"
-          cp cyvbUSDC/yearn-morpho-optimizer/contracts/*.sol "$ROOT/src/"
+          mkdir -p "$ROOT/contracts" "$ROOT/script" "$ROOT/test"
+          cp cyvbUSDC/yearn-morpho-optimizer/contracts/*.sol "$ROOT/contracts/"
           cp cyvbUSDC/yearn-morpho-optimizer/script/*.sol "$ROOT/script/"
           cp cyvbUSDC/yearn-morpho-optimizer/test/*.sol "$ROOT/test/"
           cp cyvbUSDC/yearn-morpho-optimizer/README_v2.md "$ROOT/README_PROJECT.md"
           cat > "$ROOT/foundry.toml" <<'TOML'
           [profile.default]
-          src = "src"
+          src = "contracts"
           test = "test"
           script = "script"
           out = "out"
@@ -193,7 +193,7 @@ jobs:
           forge test --match-path "test/YearnMorphoRankedMasterTest_v2.t.sol" -vv
           forge test --match-path "test/YearnMorphoMarketChildTest_v2.t.sol" -vv
           rm -rf out cache broadcast
-          sha256sum src/*.sol script/*.sol test/*.sol > SOURCE_SHA256SUMS.txt
+          sha256sum contracts/*.sol script/*.sol test/*.sol > SOURCE_SHA256SUMS.txt
           du -sh lib
           cd "$RUNNER_TEMP"
           zip -q -r "$GITHUB_WORKSPACE/$PACKAGE.zip" "$PACKAGE" -x "*/.DS_Store" "*/.git/*"
