@@ -99,6 +99,9 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
         children.push(c);
         lastRanking.push(c);
         lastMasterReport[c] = child.lastReport();
+        // If the master already holds capital, seed the newcomer immediately:
+        // otherwise the next optimize cycle would measure zero-volume PPS.
+        if (_portfolioValue() != 0) _rebalance();
         emit ChildAdded(c);
     }
 
@@ -154,6 +157,9 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
     ///         Ex: 100_000 for 0.1 vbUSDC (6 decimals).
     function setMinimumChildDeposit(uint256 minimumAssets) external onlyManagement {
         minimumChildDeposit = minimumAssets;
+        // Applying a new floor must fund every child now, not after the
+        // next claim/report cycle (where an unfunded child has no yield).
+        if (_portfolioValue() != 0) _rebalance();
         emit MinimumChildDepositUpdated(minimumAssets);
     }
 
@@ -253,12 +259,16 @@ contract YearnMorphoRankedMaster_v2 is BaseStrategy {
         }
     }
 
-    function _rebalance() internal {
-        uint256 total = asset.balanceOf(address(this));
+    function _portfolioValue() internal view returns (uint256 total) {
+        total = asset.balanceOf(address(this));
         for (uint256 i; i < children.length; ++i) {
             IYearnMorphoChildV1 child = IYearnMorphoChildV1(children[i]);
             total += child.convertToAssets(child.balanceOf(address(this)));
         }
+    }
+
+    function _rebalance() internal {
+        uint256 total = _portfolioValue();
 
         // Withdraw excess *before* depositing; never treat illiquidity as a loss.
         for (uint256 i; i < children.length; ++i) {
