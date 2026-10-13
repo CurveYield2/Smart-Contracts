@@ -54,6 +54,16 @@ jobs:
         run: forge build --sizes
       - name: Run optimizer v2 unit tests
         run: forge test --match-path "cyvbUSDC/yearn-morpho-optimizer/test/*_v2.t.sol" -vvvv
+      - name: Inspect live IPOR Morpho market substrates and Yearn deployment contracts
+        shell: bash
+        run: |
+          RPC=https://rpc.katana.network/
+          echo "live 41 (Morpho market substrates):"
+          cast call 0xDf9CbCB8b57A031e91CAe673a6A5786d85Ce2eC5 'getMarketSubstrates(uint256)(bytes32[])' 41 --rpc-url "$RPC"
+          echo "live Morpho core address:"
+          cast call 0x1f657229ec2D261be7dCD63ca82abed334d1f28b 'MORPHO()(address)' --rpc-url "$RPC"
+          echo "Yearn V3.1.0 factory version:"
+          cast call 0x310aC28ACF5E514abDbFF9Ab25e21f1bfe22bcAC 'apiVersion()(string)' --rpc-url "$RPC"
       - name: Simulate complete real Katana vault and four-child deployment (NEVER broadcast)
         env:
           DEPLOYER_FX: "1"
