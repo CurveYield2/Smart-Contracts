@@ -182,7 +182,7 @@ contract YearnMorphoRankedMasterTest_v2 is Test {
     function testRejectsInsufficientCapitalForMinimums() public {
         master.setMinimumChildDeposit(600 * UNIT);
         asset.mint(address(this), 1 * UNIT);
-        vm.expectRevert(YearnMorphoRankedMaster_v2.InsufficientSeedCapital.selector);
+        vm.expectRevert(abi.encodeWithSelector(YearnMorphoRankedMaster_v2.InsufficientSeedCapital.selector, 1200 * UNIT, 1001 * UNIT));
         ITokenizedStrategy(address(master)).deposit(1 * UNIT, address(this));
     }
 
